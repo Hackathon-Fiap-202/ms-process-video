@@ -31,3 +31,8 @@ build/
 
 ### VS Code ###
 .vscode/
+/temp/
+/localstack/cache/
+/localstack/lib/
+/localstack/logs/
+/localstack/tmp/

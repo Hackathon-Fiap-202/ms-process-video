@@ -1,0 +1,15 @@
+spring:
+  cloud:
+    aws:
+      region:
+        static: us-east-1
+      s3:
+        endpoint: http://localhost:4566
+        path-style-access-enabled: true
+      sqs:
+        endpoint: http://localhost:4566
+        video-status-queue-url: http://localhost:4566/000000000000/video-status-queue
+        video-updated-event-url: http://localhost:4566/000000000000/video-updated-event
+      credentials:
+        access-key: test
+        secret-key: test

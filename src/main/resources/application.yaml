@@ -1,0 +1,20 @@
+spring:
+  application:
+    name: process-video
+  profiles:
+    active: dev
+  cloud:
+    aws:
+      sqs:
+        listener:
+          max-concurrent-messages: 1  # Processa 1 por vez
+          max-messages-per-poll: 1
+          poll-timeout: 10
+          acknowledgement-mode: manual
+app:
+  s3:
+    bucket-videos: video-storage-bucket
+    bucket-frames: frame-storage-bucket
+  queues:
+    video-updated-event: video-updated-event
+    video-process-command: video-process-command
