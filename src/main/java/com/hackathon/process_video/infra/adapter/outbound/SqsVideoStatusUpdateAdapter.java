@@ -25,7 +25,7 @@ public class SqsVideoStatusUpdateAdapter implements VideoStatusUpdatePort {
             SqsClient sqsClient,
             LoggerPort loggerPort,
             ObjectMapper objectMapper,
-            @Value("${spring.cloud.aws.sqs.video-updated-event-url}") String queueUrl
+            @Value("${spring.cloud.aws.sqs.video-updated-event-url:http://localhost:4566/000000000000/video-updated-event}") String queueUrl
     ) {
         this.sqsClient = sqsClient;
         this.loggerPort = loggerPort;
@@ -36,9 +36,11 @@ public class SqsVideoStatusUpdateAdapter implements VideoStatusUpdatePort {
     @Override
     public void notifyStatus(String videoKey, boolean success, int frameCount, long archiveSize) {
         try {
+            loggerPort.debug("[SqsVideoStatusUpdateAdapter][notifyStatus] Building status event, videoKey={}, success={}", videoKey, success);
             VideoStatusEventDTO eventDTO = buildEventDTO(videoKey, success, frameCount, archiveSize);
             String messageBody = objectMapper.writeValueAsString(eventDTO);
 
+            loggerPort.debug("[SqsVideoStatusUpdateAdapter][notifyStatus] Sending message to SQS queue, queueUrl={}", queueUrl);
             SendMessageRequest sendMessageRequest = SendMessageRequest.builder()
                     .queueUrl(queueUrl)
                     .messageBody(messageBody)
@@ -47,11 +49,11 @@ public class SqsVideoStatusUpdateAdapter implements VideoStatusUpdatePort {
 
             SendMessageResponse response = sqsClient.sendMessage(sendMessageRequest);
 
-            loggerPort.info("Status do vídeo {} publicado na fila. MessageId: {}, Status: {}, Frames: {}, Tamanho: {} bytes",
+            loggerPort.info("[SqsVideoStatusUpdateAdapter][notifyStatus] Status published to queue, videoKey={}, messageId={}, status={}, frameCount={}, archiveSize={}bytes",
                     videoKey, response.messageId(), eventDTO.status(), frameCount, archiveSize);
 
         } catch (Exception e) {
-            loggerPort.error("Erro ao enviar status do vídeo {} para SQS: {}",
+            loggerPort.error("[SqsVideoStatusUpdateAdapter][notifyStatus] Error sending status to SQS, videoKey={}, error={}",
                     videoKey, e.getMessage());
         }
     }
@@ -60,6 +62,7 @@ public class SqsVideoStatusUpdateAdapter implements VideoStatusUpdatePort {
                                               int frameCount, long archiveSize) {
         ProcessStatus status = success ? ProcessStatus.PROCESSED : ProcessStatus.FAILED;
         String timestamp = Instant.now().toString();
+        loggerPort.debug("[SqsVideoStatusUpdateAdapter][buildEventDTO] Created status event DTO, status={}, timestamp={}", status, timestamp);
 
         return new VideoStatusEventDTO(videoKey, success, status, frameCount, archiveSize, timestamp);
     }

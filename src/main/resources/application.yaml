@@ -10,11 +10,17 @@ spring:
           max-concurrent-messages: 1  # Processa 1 por vez
           max-messages-per-poll: 1
           poll-timeout: 10
-          acknowledgement-mode: manual
+          acknowledgement-mode: MANUAL
+          queue-attributes-resolution-strategy: INHERIT
+
 app:
   s3:
     bucket-videos: video-storage-bucket
     bucket-frames: frame-storage-bucket
+  buckets:
+    video-input-storage: video-input-storage
+    video-processed-storage: video-processed-storage
   queues:
     video-updated-event: video-updated-event
     video-process-command: video-process-command
+

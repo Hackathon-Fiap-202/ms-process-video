@@ -10,48 +10,75 @@ services:
       - "4566:4566"
       - "4510-4559:4510-4559"
     environment:
-      - EXTRA_CORS_ALLOWED_ORIGINS=*
-      - HOSTNAME_EXTERNAL=172.18.128.69
-      - EAGER_SERVICE_LOADING=1
       - SERVICES=sqs,s3
-      - DEBUG=1
+      - DEBUG=0
       - AWS_DEFAULT_REGION=us-east-1
       - AWS_ACCESS_KEY_ID=test
       - AWS_SECRET_ACCESS_KEY=test
       - AWS_SESSION_TOKEN=test
+      - DOCKER_HOST=unix:///var/run/docker.sock
+      - LOCALSTACK_HOST=localstack
     volumes:
       - "./localstack:/var/lib/localstack"
       - "/var/run/docker.sock:/var/run/docker.sock"
-      - "./localstack/init:/etc/localstack/init"
+      - "./localstack/init/ready.d:/etc/localstack/init/ready.d"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 30s
     deploy:
       resources:
         limits:
-          cpus: '0.50'
-          memory: 128M
+          cpus: '2'
+          memory: 2G
+    networks:
+      - hackathon
 
-#  process-video:
-#    build: .
-#    container_name: process-video
-#    environment:
-#      - SPRING_PROFILES_ACTIVE
-#      - AWS_REGION
-#      - AWS_ACCESS_KEY
-#      - AWS_SECRET_KEY
-#      - PROCESS-VIDEO-QUEUE
-#      - VIDEO-UPDATE-QUEUE
-#    depends_on:
-#      payment-db:
-#        condition: service_healthy
-#    networks:
-#      - hackathon
-#    ports:
-#      - "8091:8091"
-#    deploy:
-#      resources:
-#        limits:
-#          cpus: '0.50'
-#          memory: 128M
+  process-video:
+    build: .
+    container_name: process-video
+    env_file:
+      - .env
+    environment:
+      - SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE:-dev}
+      - SPRING_APPLICATION_NAME=process-video
+      - AWS_REGION=${AWS_REGION:-us-east-1}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-test}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-test}
+      - SPRING_CLOUD_AWS_REGION_STATIC=${AWS_REGION:-us-east-1}
+      - SPRING_CLOUD_AWS_S3_ENDPOINT=http://localstack:4566
+      - SPRING_CLOUD_AWS_SQS_ENDPOINT=http://localstack:4566
+      - SPRING_CLOUD_AWS_CREDENTIALS_ACCESS_KEY=${AWS_ACCESS_KEY_ID:-test}
+      - SPRING_CLOUD_AWS_CREDENTIALS_SECRET_KEY=${AWS_SECRET_ACCESS_KEY:-test}
+      - LOGGING_LEVEL_ROOT=INFO
+      - LOGGING_LEVEL_COM_HACKATHON=DEBUG
+      - LOGGING_LEVEL_IO_AWSPRING_CLOUD=INFO
+      - SERVER_PORT=8080
+    depends_on:
+      localstack:
+        condition: service_healthy
+    networks:
+      - hackathon
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+    restart: on-failure
 
-#networks:
-#  hackathon:
-#    driver: bridge
+networks:
+  hackathon:
+    driver: bridge
+
+
+

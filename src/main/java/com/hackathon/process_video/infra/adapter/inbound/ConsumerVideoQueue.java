@@ -20,19 +20,48 @@ public class ConsumerVideoQueue {
     )
     public void consumeMessage(String payload, Acknowledgement acknowledgement) {
         try {
-            final var event = jsonConverter.toEventVideo(payload);
-            loggerPort.info("Iniciando processamento do vídeo: {} no bucket: {}", event.keyName, event.bucketName);
+            loggerPort.debug("[ConsumerVideoQueue][consumeMessage] Received message from SQS queue");
+            final var notification = jsonConverter.toEventVideo(payload);
 
-            processVideoUseCase.execute(event.keyName, event.bucketName);
+            if (notification.getRecords() != null && !notification.getRecords().isEmpty()) {
+                final var record = notification.getRecords().getFirst();
+                final var bucketName = record.getS3().getBucket().getName();
+                final var keyName = record.getS3().getObject().getKey();
 
-            // IMPORTANTE: Deleta a mensagem SOMENTE após sucesso completo
-            acknowledgement.acknowledge();
+                loggerPort.debug("[ConsumerVideoQueue][consumeMessage] Deserialized S3 event, bucket={}, key={}", bucketName, keyName);
 
-            loggerPort.info("Processamento concluído para: {}", event.keyName);
+                if (!isValidVideoFile(keyName)) {
+                    loggerPort.warn("[ConsumerVideoQueue][consumeMessage] File ignored - not a valid video, key={}", keyName);
+                    acknowledgement.acknowledge();
+                    return;
+                }
+
+                loggerPort.info("[ConsumerVideoQueue][consumeMessage] Starting video processing, bucket={}, key={}", bucketName, keyName);
+
+                processVideoUseCase.execute(keyName, bucketName);
+
+                acknowledgement.acknowledge();
+
+                loggerPort.info("[ConsumerVideoQueue][consumeMessage] Processing completed successfully, key={}", keyName);
+            } else {
+                loggerPort.warn("[ConsumerVideoQueue][consumeMessage] No records found in S3 event notification");
+                acknowledgement.acknowledge();
+            }
         } catch (Exception e) {
-            loggerPort.error("Erro ao processar mensagem da fila: {}", e.getMessage());
-            // Não deleta - mensagem volta para fila após visibility timeout
+            loggerPort.error("[ConsumerVideoQueue][consumeMessage] Exception processing message, error={}", e.getMessage());
             throw e;
         }
+    }
+
+    private boolean isValidVideoFile(String keyName) {
+        if (keyName == null || keyName.isEmpty()) {
+            loggerPort.debug("[ConsumerVideoQueue][isValidVideoFile] Invalid keyName - null or empty");
+            return false;
+        }
+
+        String lowerKeyName = keyName.toLowerCase();
+        boolean isValid = lowerKeyName.endsWith(".mp4");
+        loggerPort.debug("[ConsumerVideoQueue][isValidVideoFile] Validating file, key={}, isValid={}", keyName, isValid);
+        return isValid;
     }
 }

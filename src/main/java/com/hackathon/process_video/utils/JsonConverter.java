@@ -2,7 +2,7 @@ package com.hackathon.process_video.utils;
 
 import com.fasterxml.jackson.core.JacksonException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.hackathon.process_video.infra.adapter.inbound.dto.EventVideo;
+import com.hackathon.process_video.infra.adapter.inbound.dto.S3EventNotification;
 import com.hackathon.process_video.utils.exception.ConversionException;
 import org.springframework.stereotype.Component;
 
@@ -18,9 +18,9 @@ public class JsonConverter {
         this.objectMapper = objectMapper;
     }
 
-    public EventVideo toEventVideo(String json) {
+    public S3EventNotification toEventVideo(String json) {
         try {
-            return objectMapper.readValue(json, EventVideo.class);
+            return objectMapper.readValue(json, S3EventNotification.class);
         } catch (JacksonException e) {
             throw new ConversionException("Failed to deserialize EventVideo", e);
         }
