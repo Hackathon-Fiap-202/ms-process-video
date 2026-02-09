@@ -4,10 +4,10 @@ spring:
       region:
         static: us-east-1
       s3:
-        endpoint: http://localstack:4566
+        endpoint: ${AWS_ENDPOINT_URL:http://localhost:4566}
         path-style-access-enabled: true
       sqs:
-        endpoint: http://localstack:4566
+        endpoint: ${AWS_ENDPOINT_URL:http://localhost:4566}
       credentials:
         access-key: test
         secret-key: test

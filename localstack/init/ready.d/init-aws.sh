@@ -4,7 +4,7 @@ set -e
 echo "========== LOCALSTACK INIT SCRIPT STARTED =========="
 
 AWS_REGION="us-east-1"
-ENDPOINT_URL="http://localhost:4566"
+ENDPOINT_URL="http://localstack:4566"
 PROCESS_VIDEO_QUEUE_NAME="video-process-command"
 UPDATE_VIDEO_QUEUE_NAME="video-updated-event"
 INPUT_BUCKET="video-input-storage"
@@ -87,10 +87,29 @@ aws --endpoint-url="$ENDPOINT_URL" sqs set-queue-attributes \
   --attributes "Policy=$POLICY" 2>&1 || echo "[WARN] Could not set policy (may be expected)"
 
 echo "[SET] S3 bucket notification"
+NOTIFICATION_CONFIG='{
+  "QueueConfigurations": [
+    {
+      "QueueArn": "'${PROCESS_QUEUE_ARN}'",
+      "Events": ["s3:ObjectCreated:*"],
+      "Filter": {
+        "Key": {
+          "FilterRules": [
+            {
+              "Name": "suffix",
+              "Value": ".mp4"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}'
+
 aws --endpoint-url="$ENDPOINT_URL" s3api put-bucket-notification-configuration \
   --bucket "$INPUT_BUCKET" \
   --region "$AWS_REGION" \
-  --notification-configuration "QueueConfigurations=[{Events=['s3:ObjectCreated:*'],QueueArn='${PROCESS_QUEUE_ARN}',Filter={Key={FilterRules=[{Name='suffix',Value='.mp4'}]}}}]" \
+  --notification-configuration "$NOTIFICATION_CONFIG" \
   2>&1 || echo "[WARN] Could not set notification (may be expected)"
 
 echo ""
