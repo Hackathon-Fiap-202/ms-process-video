@@ -23,6 +23,9 @@ app:
   queues:
     video-process-command: video-process-command
     video-updated-event: video-updated-event
+  sqs:
+    video-process-command-url: ${SQS_VIDEO_PROCESS_COMMAND_URL:http://localhost:4566/000000000000/video-process-command}
+    video-updated-event-url: ${SQS_VIDEO_UPDATED_EVENT_URL:http://localhost:4566/000000000000/video-updated-event}
   frame-extraction:
-    thread-pool-size: 12  # 2x CPU cores, configurable per environment
-    queue-capacity: 100   # Maximum frames in queue before blocking
+    thread-pool-size: 4
+    queue-capacity: 100

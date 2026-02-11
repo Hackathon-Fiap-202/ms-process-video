@@ -24,6 +24,9 @@ io:
           queue-attributes-resolution-strategy: INHERIT
 
 app:
+  sqs:
+    video-process-command-url: http://localhost:4566/000000000000/video-process-command
+    video-updated-event-url: http://localhost:4566/000000000000/video-updated-event
   frame-extraction:
     thread-pool-size: 4                    # ← 4 threads per video frame extraction
     queue-capacity: 100

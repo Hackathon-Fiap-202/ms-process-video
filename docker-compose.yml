@@ -66,7 +66,7 @@ services:
       retries: 5
       start_period: 30s
     deploy:
-      replicas: 3                  # ← Run 3 instances of process-video in parallel
+      replicas: 6                 # ← Run 3 instances of process-video in parallel
       resources:
         limits:
           cpus: '3'
