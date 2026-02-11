@@ -23,3 +23,7 @@ io:
           acknowledgement-mode: MANUAL
           queue-attributes-resolution-strategy: INHERIT
 
+app:
+  frame-extraction:
+    thread-pool-size: 4  # Lower for development environments
+    queue-capacity: 100

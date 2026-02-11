@@ -16,7 +16,6 @@ services:
       - AWS_ACCESS_KEY_ID=test
       - AWS_SECRET_ACCESS_KEY=test
       - AWS_SESSION_TOKEN=test
-      - DOCKER_HOST=unix:///var/run/docker.sock
       - LOCALSTACK_HOST=localstack
     volumes:
       - "./localstack:/var/lib/localstack"
@@ -31,8 +30,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '2'
-          memory: 2G
+          cpus: '4'
+          memory: 4G
     networks:
       - hackathon
 
@@ -72,8 +71,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '2'
-          memory: 2G
+          cpus: '4'
+          memory: 4G
     restart: on-failure
 
 networks:

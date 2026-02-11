@@ -18,7 +18,6 @@ public class SqsConfigDev {
     private String region;
 
     @Bean
-
     public SqsClient sqsClientDev(
             @Value("${spring.cloud.aws.sqs.endpoint}") String endpoint
     ) {

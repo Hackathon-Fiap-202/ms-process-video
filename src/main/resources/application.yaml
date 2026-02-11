@@ -21,6 +21,8 @@ app:
     video-input-storage: video-input-storage
     video-processed-storage: video-processed-storage
   queues:
-    video-updated-event: video-updated-event
     video-process-command: video-process-command
-
+    video-updated-event: video-updated-event
+  frame-extraction:
+    thread-pool-size: 12  # 2x CPU cores, configurable per environment
+    queue-capacity: 100   # Maximum frames in queue before blocking
