@@ -57,9 +57,9 @@ public class S3EventRecord {
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class ResponseElements {
         @JsonProperty("x-amz-request-id")
-        private String xAmzRequestId;
+        private String xamzRequestId;
 
         @JsonProperty("x-amz-id-2")
-        private String xAmzId2;
+        private String xamzId2;
     }
 }

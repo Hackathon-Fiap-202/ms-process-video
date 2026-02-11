@@ -7,7 +7,6 @@ import lombok.NoArgsConstructor;
 import org.springframework.util.StringUtils;
 
 
-
 @NoArgsConstructor
 @Getter
 public class EventVideoUpdate {
@@ -17,14 +16,14 @@ public class EventVideoUpdate {
     private String bucketName;
 
     @Builder
-    public EventVideoUpdate(ProcessStatus status,String keyName, String bucketName) {
-        if(status == null){
+    public EventVideoUpdate(ProcessStatus status, String keyName, String bucketName) {
+        if (status == null) {
             throw new IllegalArgumentException("Status is mandatory");
         }
-        if(!StringUtils.hasText(keyName)){
+        if (!StringUtils.hasText(keyName)) {
             throw new IllegalArgumentException("Key name is mandatory");
         }
-        if(!StringUtils.hasText(bucketName)){
+        if (!StringUtils.hasText(bucketName)) {
             throw new IllegalArgumentException("Bucket name is mandatory");
         }
         this.keyName = keyName;

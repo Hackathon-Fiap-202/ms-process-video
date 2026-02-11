@@ -5,12 +5,12 @@ import com.hackathon.processvideo.domain.model.enums.ProcessStatus;
 import com.hackathon.processvideo.domain.model.enums.VideoStatusEventDTO;
 import com.hackathon.processvideo.domain.port.out.LoggerPort;
 import com.hackathon.processvideo.domain.port.out.VideoStatusUpdatePort;
+import java.time.Instant;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import software.amazon.awssdk.services.sqs.SqsClient;
 import software.amazon.awssdk.services.sqs.model.SendMessageRequest;
 import software.amazon.awssdk.services.sqs.model.SendMessageResponse;
-import java.time.Instant;
 
 
 @Component
@@ -37,35 +37,43 @@ public class SqsVideoStatusUpdateAdapter implements VideoStatusUpdatePort {
     public void notifyStatus(String videoKey, boolean success, int frameCount, long archiveSize) {
         try {
             loggerPort.debug("[SqsVideoStatusUpdateAdapter][notifyStatus] Building status event, videoKey={}, success={}", videoKey, success);
-            VideoStatusEventDTO eventDTO = buildEventDTO(videoKey, success, frameCount, archiveSize);
-            String messageBody = objectMapper.writeValueAsString(eventDTO);
+            final VideoStatusEventDTO eventDTO = buildEventDTO(videoKey, success, frameCount, archiveSize);
+            final String messageBody = objectMapper.writeValueAsString(eventDTO);
 
             loggerPort.debug("[SqsVideoStatusUpdateAdapter][notifyStatus] Sending message to SQS queue, queueUrl={}", queueUrl);
-            SendMessageRequest sendMessageRequest = SendMessageRequest.builder()
+            final SendMessageRequest sendMessageRequest = SendMessageRequest.builder()
                     .queueUrl(queueUrl)
                     .messageBody(messageBody)
                     .delaySeconds(0)
                     .build();
 
-            SendMessageResponse response = sqsClient.sendMessage(sendMessageRequest);
+            final SendMessageResponse response = sqsClient.sendMessage(sendMessageRequest);
 
-            loggerPort.info("[SqsVideoStatusUpdateAdapter][notifyStatus] Status published to queue, videoKey={}, messageId={}, status={}, frameCount={}, archiveSize={}bytes",
+            loggerPort.info(
+                    "[SqsVideoStatusUpdateAdapter][notifyStatus]"
+                            + " Status published to queue, videoKey={}, messageId={}, status={}, frameCount={}, archiveSize={}bytes",
                     videoKey, response.messageId(), eventDTO.status(), frameCount, archiveSize);
 
-        } catch (Exception e) {
-            loggerPort.error("[SqsVideoStatusUpdateAdapter][notifyStatus] Error sending status to SQS, videoKey={}, error={}",
-                    videoKey, e.getMessage());
+        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+            loggerPort.error(
+                    "[SqsVideoStatusUpdateAdapter][notifyStatus] Error serializing status to JSON, videoKey={}, error={}",
+                    videoKey,
+                    e.getMessage());
+        } catch (software.amazon.awssdk.core.exception.SdkException e) {
+            loggerPort.error(
+                    "[SqsVideoStatusUpdateAdapter][notifyStatus] Error sending status to SQS, videoKey={}, error={}",
+                    videoKey,
+                    e.getMessage());
         }
     }
 
     private VideoStatusEventDTO buildEventDTO(String videoKey, boolean success,
                                               int frameCount, long archiveSize) {
-        ProcessStatus status = success ? ProcessStatus.PROCESSED : ProcessStatus.FAILED;
-        String timestamp = Instant.now().toString();
+        final ProcessStatus status = success ? ProcessStatus.PROCESSED : ProcessStatus.FAILED;
+        final String timestamp = Instant.now().toString();
         loggerPort.debug("[SqsVideoStatusUpdateAdapter][buildEventDTO] Created status event DTO, status={}, timestamp={}", status, timestamp);
 
         return new VideoStatusEventDTO(videoKey, success, status, frameCount, archiveSize, timestamp);
     }
-
 
 }

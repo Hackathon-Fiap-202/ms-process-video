@@ -1,11 +1,10 @@
 package com.hackathon.processvideo.infra.adapter.inbound;
 
 import com.hackathon.processvideo.domain.port.out.LoggerPort;
+import java.util.Arrays;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
-
-import java.util.Arrays;
 
 @Component
 public class LoggerAdapter implements LoggerPort {

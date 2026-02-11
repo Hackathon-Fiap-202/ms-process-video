@@ -16,7 +16,7 @@ public class S3Object {
     private String sequencer;
 
     @JsonProperty("eTag")
-    private String eTag;
+    private String etag;
 
     @JsonProperty("size")
     private Long size;
