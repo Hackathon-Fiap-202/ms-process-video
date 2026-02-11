@@ -1,0 +1,21 @@
+spring:
+  cloud:
+    aws:
+      region:
+        static: us-east-1
+      s3:
+        path-style-access-enabled: false
+      sqs:
+        listener:
+          max-concurrent-messages: 5       # ← Limit to 5 concurrent SQS consumers
+          max-messages-per-poll: 5         # ← Poll 5 messages per request
+          poll-timeout: 10
+          queue-attributes-resolution-strategy: INHERIT
+
+app:
+  sqs:
+    video-process-command-url: ${SQS_VIDEO_PROCESS_COMMAND_URL}
+    video-updated-event-url: ${SQS_VIDEO_UPDATED_EVENT_URL}
+  frame-extraction:
+    thread-pool-size: ${APP_FRAME_EXTRACTION_THREAD_POOL_SIZE:4}   # ← 4 threads per video frame extraction
+    queue-capacity: ${APP_FRAME_EXTRACTION_QUEUE_CAPACITY:200}     # ← Moderate queue for production
