@@ -25,7 +25,7 @@ jobs:
       - uses: actions/checkout@v4
 
       # --- INÍCIO: BLOCO DE TESTES DE INTEGRAÇÃO ---
-      - name: Set up JDK 25
+      - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
           java-version: '21'
