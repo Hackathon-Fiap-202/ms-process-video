@@ -1,0 +1,24 @@
+---
+version: 2
+updates:
+  - package-ecosystem: "maven"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "build(maven)"
+    labels:
+      - "dependencies"
+      - "java"
+
+  - package-ecosystem: "docker"
+    directory: "/infra"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "build(docker)"
+    labels:
+      - "dependencies"
+      - "docker"
