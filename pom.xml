@@ -9,9 +9,9 @@
 		<relativePath/> <!-- lookup parent from repository -->
 	</parent>
 	<groupId>com.hackathon</groupId>
-	<artifactId>process-video</artifactId>
+	<artifactId>processvideo</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
-	<name>process-video</name>
+	<name>processvideo</name>
 	<description>ms to process videos</description>
 	<url/>
 	<licenses>
