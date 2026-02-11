@@ -30,14 +30,13 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '4'
-          memory: 4G
+          cpus: '2'
+          memory: 2G
     networks:
       - hackathon
 
   process-video:
     build: .
-    container_name: process-video
     env_file:
       - .env
     environment:
@@ -60,8 +59,6 @@ services:
         condition: service_healthy
     networks:
       - hackathon
-    ports:
-      - "8080:8080"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 10s
@@ -69,10 +66,21 @@ services:
       retries: 5
       start_period: 30s
     deploy:
+      replicas: 3                  # ← Run 3 instances of process-video in parallel
       resources:
         limits:
-          cpus: '4'
+          cpus: '3'
           memory: 4G
+        reservations:
+          cpus: '2'
+          memory: 2G
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      update_config:
+        parallelism: 1
+        delay: 10s
     restart: on-failure
 
 networks:

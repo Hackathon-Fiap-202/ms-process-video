@@ -18,12 +18,12 @@ io:
       sqs:
         listener:
           poll-timeout: 10
-          max-concurrent-messages: 1
-          max-messages-per-poll: 1
+          max-concurrent-messages: 3       # ← Limit to 3 concurrent SQS consumers
+          max-messages-per-poll: 3         # ← Poll 3 messages per request
           acknowledgement-mode: MANUAL
           queue-attributes-resolution-strategy: INHERIT
 
 app:
   frame-extraction:
-    thread-pool-size: 4  # Lower for development environments
+    thread-pool-size: 4                    # ← 4 threads per video frame extraction
     queue-capacity: 100

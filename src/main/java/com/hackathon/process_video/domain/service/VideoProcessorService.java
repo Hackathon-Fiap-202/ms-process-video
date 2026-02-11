@@ -6,9 +6,11 @@ import com.hackathon.process_video.domain.port.out.LoggerPort;
 import com.hackathon.process_video.domain.port.out.VideoStatusUpdatePort;
 import com.hackathon.process_video.domain.port.out.VideoFrameExtractorPort;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 import java.io.InputStream;
+import java.util.concurrent.CompletableFuture;
 
 @Service
 public class VideoProcessorService implements ProcessVideoUseCase {
@@ -32,48 +34,57 @@ public class VideoProcessorService implements ProcessVideoUseCase {
     }
 
     @Override
+    @Async("videoProcessorExecutor")
     public void execute(String keyName, String bucketName) {
         boolean isSuccess = false;
         int frameCount = 0;
         long finalArchiveSize = 0;
 
         try {
-            loggerPort.debug("[VideoProcessorService][execute] Starting execution, inputKey={}, inputBucket={}", keyName, bucketName);
+            loggerPort.debug("[VideoProcessorService][execute] [Thread: {}] Starting execution, inputKey={}, inputBucket={}",
+                Thread.currentThread().getName(), keyName, bucketName);
 
             try (InputStream videoStream = fileServicePort.getFile(bucketName, keyName)) {
-                loggerPort.debug("[VideoProcessorService][execute] Video file retrieved from S3, key={}", keyName);
+                loggerPort.debug("[VideoProcessorService][execute] [Thread: {}] Video file retrieved from S3, key={}",
+                    Thread.currentThread().getName(), keyName);
 
                 String outputKey = formatOutputKey(keyName);
                 String entryPrefix = extractPrefixFromKey(keyName);
-                loggerPort.debug("[VideoProcessorService][execute] Preparing frame extraction, outputKey={}, entryPrefix={}", outputKey, entryPrefix);
+                loggerPort.debug("[VideoProcessorService][execute] [Thread: {}] Preparing frame extraction, outputKey={}, entryPrefix={}",
+                    Thread.currentThread().getName(), outputKey, entryPrefix);
 
                 try (InputStream zippedFrames = videoFrameExtractorPort.extractFramesAsZip(videoStream, entryPrefix)) {
-                    loggerPort.info("[VideoProcessorService][execute] Frame extraction completed, uploading to output bucket={}", outputBucketName);
+                    loggerPort.info("[VideoProcessorService][execute] [Thread: {}] Frame extraction completed, uploading to output bucket={}",
+                        Thread.currentThread().getName(), outputBucketName);
                     isSuccess = fileServicePort.uploadFile(outputBucketName, outputKey, zippedFrames);
 
                     if (isSuccess) {
                         finalArchiveSize = fileServicePort.getSize(outputBucketName, outputKey);
                         frameCount = estimateFrameCount(finalArchiveSize);
-                        loggerPort.info("[VideoProcessorService][execute] File uploaded successfully, outputKey={}, size={}bytes, estimatedFrames={}",
-                                outputKey, finalArchiveSize, frameCount);
+                        loggerPort.info("[VideoProcessorService][execute] [Thread: {}] File uploaded successfully, outputKey={}, size={}bytes, estimatedFrames={}",
+                                Thread.currentThread().getName(), outputKey, finalArchiveSize, frameCount);
                     } else {
-                        loggerPort.error("[VideoProcessorService][execute] Upload failed for outputKey={}", outputKey);
+                        loggerPort.error("[VideoProcessorService][execute] [Thread: {}] Upload failed for outputKey={}",
+                            Thread.currentThread().getName(), outputKey);
                     }
                 }
 
                 if (isSuccess) {
-                    loggerPort.debug("[VideoProcessorService][execute] Deleting source video, key={}, bucket={}", keyName, bucketName);
+                    loggerPort.debug("[VideoProcessorService][execute] [Thread: {}] Deleting source video, key={}, bucket={}",
+                        Thread.currentThread().getName(), keyName, bucketName);
                     fileServicePort.deleteFile(bucketName, keyName);
-                    loggerPort.info("[VideoProcessorService][execute] Source video deleted successfully");
+                    loggerPort.info("[VideoProcessorService][execute] [Thread: {}] Source video deleted successfully",
+                        Thread.currentThread().getName());
                 }
 
             }
         } catch (Exception e) {
-            loggerPort.error("[VideoProcessorService][execute] Critical failure during video processing, inputKey={}, error={}",
-                    keyName, e.getMessage());
+            loggerPort.error("[VideoProcessorService][execute] [Thread: {}] Critical failure during video processing, inputKey={}, error={}",
+                    Thread.currentThread().getName(), keyName, e.getMessage());
             e.printStackTrace();
         } finally {
-            loggerPort.debug("[VideoProcessorService][execute] Publishing status update, success={}, frameCount={}", isSuccess, frameCount);
+            loggerPort.debug("[VideoProcessorService][execute] [Thread: {}] Publishing status update, success={}, frameCount={}",
+                Thread.currentThread().getName(), isSuccess, frameCount);
             videoStatusUpdatePort.notifyStatus(keyName, isSuccess, frameCount, finalArchiveSize);
         }
     }

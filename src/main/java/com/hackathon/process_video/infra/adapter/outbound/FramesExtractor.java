@@ -13,6 +13,9 @@ import org.springframework.stereotype.Component;
 import org.springframework.beans.factory.annotation.Value;
 
 import javax.imageio.ImageIO;
+import javax.imageio.ImageWriteParam;
+import javax.imageio.ImageWriter;
+import javax.imageio.stream.ImageOutputStream;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -32,10 +35,11 @@ import java.util.zip.ZipOutputStream;
 @Component
 public class FramesExtractor implements VideoFrameExtractorPort {
 
-    private static final String IMAGE_FORMAT = "png";
+    private static final String IMAGE_FORMAT = "jpg";
+    private static final int JPG_QUALITY = 85; // 0-100, 85-90 recommended for optimal quality/size tradeoff
     private static final int BUFFER_SIZE = 128 * 1024;
     private static final String THREAD_NAME_PREFIX = "video-frame-extractor";
-    private static final int FPS = 30; // One frame per second = FPS frames interval
+    private static final int FPS = 60; // One frame every 2 seconds (30 FPS * 2) = 50% of seconds extracted
     private static final Object POISON_PILL = new Object(); // Sentinel value to signal queue end
 
     private final LoggerPort loggerPort;
@@ -43,7 +47,7 @@ public class FramesExtractor implements VideoFrameExtractorPort {
     private final int queueCapacity;
 
     public FramesExtractor(LoggerPort loggerPort,
-                           @Value("${app.frame-extraction.thread-pool-size:#{T(java.lang.Runtime).getRuntime().availableProcessors() * 2}}") int threadPoolSize,
+                           @Value("${app.frame-extraction.thread-pool-size:4}") int threadPoolSize,
                            @Value("${app.frame-extraction.queue-capacity:100}") int queueCapacity) {
         this.loggerPort = loggerPort;
         this.threadPoolSize = threadPoolSize;
@@ -96,8 +100,8 @@ public class FramesExtractor implements VideoFrameExtractorPort {
                 throw new VideoProcessingException("Video has no valid frames", null);
             }
 
-            loggerPort.info("[FramesExtractor][extractFramesInBackground] {} Starting frame extraction, totalFrames={}, threadPoolSize={}, queueCapacity={}",
-                    getThreadInfo(), totalFrames, threadPoolSize, queueCapacity);
+            loggerPort.info("[FramesExtractor][extractFramesInBackground] {} Starting frame extraction, totalFrames={}, threadPoolSize={}, queueCapacity={}, imageFormat={}@{}%, samplingRate=50%(1frame/2sec)",
+                    getThreadInfo(), totalFrames, threadPoolSize, queueCapacity, IMAGE_FORMAT, JPG_QUALITY);
             extractFramesWithMultiThread(tempVideo, totalFrames, zos, entryNamePrefix);
 
             loggerPort.debug("[FramesExtractor][extractFramesInBackground] {} Finishing ZIP output stream", getThreadInfo());
@@ -162,9 +166,13 @@ public class FramesExtractor implements VideoFrameExtractorPort {
             throws IOException {
 
         try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
-            ImageIO.write(image, IMAGE_FORMAT, baos);
-            byte[] imageBytes = baos.toByteArray();
+            if (IMAGE_FORMAT.equalsIgnoreCase("jpg")) {
+                writeJpgWithQuality(image, baos, JPG_QUALITY);
+            } else {
+                ImageIO.write(image, IMAGE_FORMAT, baos);
+            }
 
+            byte[] imageBytes = baos.toByteArray();
             String entryName = String.format("%04d.%s", frameIndex, IMAGE_FORMAT);
             ZipEntry entry = new ZipEntry(entryName);
 
@@ -173,6 +181,20 @@ public class FramesExtractor implements VideoFrameExtractorPort {
             zos.putNextEntry(entry);
             zos.write(imageBytes);
             zos.closeEntry();
+        }
+    }
+
+    private void writeJpgWithQuality(BufferedImage image, ByteArrayOutputStream baos, int quality) throws IOException {
+        ImageWriter writer = ImageIO.getImageWritersByFormatName("jpg").next();
+        ImageWriteParam param = writer.getDefaultWriteParam();
+        param.setCompressionMode(ImageWriteParam.MODE_EXPLICIT);
+        param.setCompressionQuality(quality / 100f);
+
+        try (ImageOutputStream ios = ImageIO.createImageOutputStream(baos)) {
+            writer.setOutput(ios);
+            writer.write(null, new javax.imageio.IIOImage(image, null, null), param);
+        } finally {
+            writer.dispose();
         }
     }
 
@@ -234,10 +256,10 @@ public class FramesExtractor implements VideoFrameExtractorPort {
         ExecutorService executorService = Executors.newFixedThreadPool(threadPoolSize,
                 r -> new Thread(r, THREAD_NAME_PREFIX + "-worker-" + System.currentTimeMillis()));
 
-        int frameInterval = FPS; // One frame per second
+        int frameInterval = FPS; // One frame every 2 seconds (50% sampling)
         int totalFramesToExtract = (totalFrames + frameInterval - 1) / frameInterval;
 
-        loggerPort.info("[FramesExtractor][extractFramesWithMultiThread] Starting multi-thread extraction with {} threads, totalFramesToExtract={}",
+        loggerPort.info("[FramesExtractor][extractFramesWithMultiThread] Starting multi-thread extraction with {} threads, totalFramesToExtract={}, samplingRate=50%(1frame/2sec)",
                 threadPoolSize, totalFramesToExtract);
 
         // Start ZIP writer thread
@@ -250,7 +272,7 @@ public class FramesExtractor implements VideoFrameExtractorPort {
         }, THREAD_NAME_PREFIX + "-zip-writer-" + System.currentTimeMillis());
         zipWriterThread.start();
 
-        // Submit frame extraction tasks
+        // Submit frame extraction tasks (50% sampling: 1 frame every 2 seconds)
         int frameIndex = 0;
         for (int frameNumber = 0; frameNumber < totalFrames; frameNumber += frameInterval) {
             final int currentFrameNumber = frameNumber;
