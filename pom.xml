@@ -29,6 +29,8 @@
 	<properties>
 		<java.version>25</java.version>
 		<spring-cloud-aws-starter-sqs.version>4.0.0-M1</spring-cloud-aws-starter-sqs.version>
+		<maven.compiler.source>25</maven.compiler.source>
+		<maven.compiler.target>25</maven.compiler.target>
 	</properties>
 	<dependencyManagement>
 		<dependencies>
@@ -157,6 +159,7 @@
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-compiler-plugin</artifactId>
+				<version>3.15.0</version>
 				<configuration>
 					<annotationProcessorPaths>
 						<path>
