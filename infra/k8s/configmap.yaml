@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: process-video-config
+  namespace: default
+data:
+  SPRING_PROFILES_ACTIVE: prod
+  AWS_REGION: ${AWS_REGION}
+  SPRING_APPLICATION_NAME: process-video
+  # Para produção AWS, descomentar:
+  # SQS_VIDEO_PROCESS_COMMAND_URL: https://sqs.${AWS_REGION}.amazonaws.com/${AWS_ACCOUNT_ID}/video-process-command
+  # SQS_VIDEO_UPDATED_EVENT_URL: https://sqs.${AWS_REGION}.amazonaws.com/${AWS_ACCOUNT_ID}/video-updated-event
+  # Para LocalStack/dev, usar URLs locais:
+  SQS_VIDEO_PROCESS_COMMAND_URL: http://localstack:4566/000000000000/video-process-command
+  SQS_VIDEO_UPDATED_EVENT_URL: http://localstack:4566/000000000000/video-updated-event
+  APP_FRAME_EXTRACTION_THREAD_POOL_SIZE: "4"
+  APP_FRAME_EXTRACTION_QUEUE_CAPACITY: "200"
+  APP_BUCKETS_VIDEO_INPUT_STORAGE: video-input-storage
+  APP_BUCKETS_VIDEO_PROCESSED_STORAGE: video-processed-storage

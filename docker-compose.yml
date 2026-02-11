@@ -37,12 +37,14 @@ services:
 
   process-video:
     build: .
+    container_name: process-video
     env_file:
       - .env
     environment:
       - SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE:-dev}
       - SPRING_APPLICATION_NAME=process-video
       - AWS_REGION=${AWS_REGION:-us-east-1}
+      - AWS_ACCOUNT_ID=${AWS_ACCOUNT_ID:-000000000000}
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-test}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-test}
       - SPRING_CLOUD_AWS_REGION_STATIC=${AWS_REGION:-us-east-1}
@@ -50,6 +52,10 @@ services:
       - SPRING_CLOUD_AWS_SQS_ENDPOINT=http://localstack:4566
       - SPRING_CLOUD_AWS_CREDENTIALS_ACCESS_KEY=${AWS_ACCESS_KEY_ID:-test}
       - SPRING_CLOUD_AWS_CREDENTIALS_SECRET_KEY=${AWS_SECRET_ACCESS_KEY:-test}
+      - SQS_VIDEO_PROCESS_COMMAND_URL=http://localstack:4566/000000000000/video-process-command
+      - SQS_VIDEO_UPDATED_EVENT_URL=http://localstack:4566/000000000000/video-updated-event
+      - APP_BUCKETS_VIDEO_INPUT_STORAGE=video-input-storage
+      - APP_BUCKETS_VIDEO_PROCESSED_STORAGE=video-processed-storage
       - LOGGING_LEVEL_ROOT=INFO
       - LOGGING_LEVEL_COM_HACKATHON=DEBUG
       - LOGGING_LEVEL_IO_AWSPRING_CLOUD=INFO
@@ -57,30 +63,29 @@ services:
     depends_on:
       localstack:
         condition: service_healthy
+    ports:
+      - "8080:8080"
     networks:
       - hackathon
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 30s
     deploy:
-      replicas: 6                 # ← Run 3 instances of process-video in parallel
+      replicas: 1
       resources:
         limits:
-          cpus: '3'
-          memory: 4G
-        reservations:
-          cpus: '2'
+          cpus: 1
           memory: 2G
+        reservations:
+          cpus: 0.5
+          memory: 1G
       restart_policy:
         condition: on-failure
         delay: 5s
         max_attempts: 3
-      update_config:
-        parallelism: 1
-        delay: 10s
     restart: on-failure
 
 networks:
