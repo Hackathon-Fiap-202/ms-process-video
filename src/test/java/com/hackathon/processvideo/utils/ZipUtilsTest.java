@@ -40,10 +40,16 @@ class ZipUtilsTest {
         // AND: The ZIP contains the expected entries
         try (ZipInputStream zis = new ZipInputStream(zipResult)) {
             ZipEntry entry1 = zis.getNextEntry();
-            assertThat(entry1.getName()).isEqualTo("frame1.png");
+            assertThat(entry1).isNotNull();
+            @SuppressWarnings("nullness")
+            String entry1Name = entry1.getName();
+            assertThat(entry1Name).isEqualTo("frame1.png");
 
             ZipEntry entry2 = zis.getNextEntry();
-            assertThat(entry2.getName()).isEqualTo("frame2.png");
+            assertThat(entry2).isNotNull();
+            @SuppressWarnings("nullness")
+            String entry2Name = entry2.getName();
+            assertThat(entry2Name).isEqualTo("frame2.png");
 
             assertThat(zis.getNextEntry()).isNull(); // No more entries
         }
@@ -60,9 +66,13 @@ class ZipUtilsTest {
         List<File> filesToZip = List.of(nonExistentFile);
 
         // WHEN / THEN: It should wrap the IOException into a VideoProcessingException
-        assertThatThrownBy(() -> ZipUtils.compressFiles(filesToZip))
+        assertThatThrownBy(() -> {
+            try (InputStream ignored = ZipUtils.compressFiles(filesToZip)) {
+                // Attempt to consume the stream to trigger the exception
+            }
+        })
                 .isInstanceOf(VideoProcessingException.class)
-                .hasMessageContaining("Erro ao zipar");
+                .hasMessageContaining("Erro ao processar compressão de arquivos");
     }
 
     @Test

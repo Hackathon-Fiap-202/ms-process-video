@@ -124,8 +124,6 @@ class S3AdapterTest {
             final InputStream fileStream = new ByteArrayInputStream(FILE_CONTENT);
             when(s3Template.upload(BUCKET_NAME, FILE_KEY, fileStream))
                     .thenReturn(s3Resource);
-            when(s3Resource.exists())
-                    .thenReturn(true);
 
             // Act
             final boolean result = s3Adapter.uploadFile(BUCKET_NAME, FILE_KEY, fileStream);
@@ -133,7 +131,6 @@ class S3AdapterTest {
             // Assert
             assertTrue(result);
             verify(s3Template, times(1)).upload(BUCKET_NAME, FILE_KEY, fileStream);
-            verify(s3Resource, times(1)).exists();
             verify(loggerPort, times(1)).info(
                     "[S3Adapter][uploadFile] Starting upload to S3, bucket={}, key={}",
                     BUCKET_NAME, FILE_KEY);
@@ -143,14 +140,14 @@ class S3AdapterTest {
         }
 
         @Test
-        @DisplayName("Should return false when upload verification fails")
+        @DisplayName("Should return false when upload fails with SdkException")
         void shouldReturnFalseWhenUploadVerificationFails() {
             // Arrange
             final InputStream fileStream = new ByteArrayInputStream(FILE_CONTENT);
+            final SdkException sdkException = mock(SdkException.class);
+            when(sdkException.getMessage()).thenReturn("Upload failed");
             when(s3Template.upload(BUCKET_NAME, FILE_KEY, fileStream))
-                    .thenReturn(s3Resource);
-            when(s3Resource.exists())
-                    .thenReturn(false);
+                    .thenThrow(sdkException);
 
             // Act
             final boolean result = s3Adapter.uploadFile(BUCKET_NAME, FILE_KEY, fileStream);
@@ -162,8 +159,31 @@ class S3AdapterTest {
                     "[S3Adapter][uploadFile] Starting upload to S3, bucket={}, key={}",
                     BUCKET_NAME, FILE_KEY);
             verify(loggerPort, times(1)).error(
-                    "[S3Adapter][uploadFile] Upload verification failed, bucket={}, key={}",
+                    "[S3Adapter][uploadFile] AWS SDK error during upload to S3, bucket={}, key={}, error={}",
+                    BUCKET_NAME, FILE_KEY, "Upload failed");
+        }
+
+        @Test
+        @DisplayName("Should return false when upload fails with IOException")
+        void shouldReturnFalseWhenUploadFailsWithIOException() throws IOException {
+            // Arrange
+            final InputStream fileStream = mock(InputStream.class);
+            // Mock close() to throw IOException (try-with-resources calls close())
+            doThrow(new IOException("Stream close error")).when(fileStream).close();
+            when(s3Template.upload(BUCKET_NAME, FILE_KEY, fileStream))
+                    .thenReturn(s3Resource);
+
+            // Act
+            final boolean result = s3Adapter.uploadFile(BUCKET_NAME, FILE_KEY, fileStream);
+
+            // Assert
+            assertFalse(result);
+            verify(loggerPort, times(1)).info(
+                    "[S3Adapter][uploadFile] Starting upload to S3, bucket={}, key={}",
                     BUCKET_NAME, FILE_KEY);
+            verify(loggerPort, times(1)).error(
+                    "[S3Adapter][uploadFile] IOException during upload to S3, bucket={}, key={}, error={}",
+                    BUCKET_NAME, FILE_KEY, "Stream close error");
         }
 
         @Test
@@ -173,8 +193,6 @@ class S3AdapterTest {
             final InputStream fileStream = new ByteArrayInputStream(FILE_CONTENT);
             when(s3Template.upload(BUCKET_NAME, FILE_KEY, fileStream))
                     .thenReturn(s3Resource);
-            when(s3Resource.exists())
-                    .thenReturn(true);
 
             // Act
             s3Adapter.uploadFile(BUCKET_NAME, FILE_KEY, fileStream);
@@ -192,8 +210,6 @@ class S3AdapterTest {
             final InputStream fileStream = new ByteArrayInputStream(FILE_CONTENT);
             when(s3Template.upload(BUCKET_NAME, FILE_KEY, fileStream))
                     .thenReturn(s3Resource);
-            when(s3Resource.exists())
-                    .thenReturn(true);
 
             // Act
             s3Adapter.uploadFile(BUCKET_NAME, FILE_KEY, fileStream);
@@ -211,8 +227,6 @@ class S3AdapterTest {
             final InputStream fileStream = new ByteArrayInputStream(FILE_CONTENT);
             when(s3Template.upload(BUCKET_NAME, FILE_KEY, fileStream))
                     .thenReturn(s3Resource);
-            when(s3Resource.exists())
-                    .thenReturn(true);
 
             // Act
             s3Adapter.uploadFile(BUCKET_NAME, FILE_KEY, fileStream);
@@ -293,6 +307,10 @@ class S3AdapterTest {
 
             // Act & Assert - should not throw
             s3Adapter.deleteFile(BUCKET_NAME, FILE_KEY);
+            verify(s3Template, times(1)).deleteObject(BUCKET_NAME, FILE_KEY);
+            verify(loggerPort, times(1)).warn(
+                    "[S3Adapter][deleteFile] Error deleting file from S3, bucket={}, key={}, error={}",
+                    BUCKET_NAME, FILE_KEY, "Network error");
         }
     }
 
@@ -505,22 +523,25 @@ class S3AdapterTest {
         }
 
         @Test
-        @DisplayName("Should call upload before exists check in uploadFile")
+        @DisplayName("Should call upload and return true on successful upload")
         void shouldCallUploadBeforeExistsCheck() {
             // Arrange
             final InputStream fileStream = new ByteArrayInputStream(FILE_CONTENT);
             when(s3Template.upload(BUCKET_NAME, FILE_KEY, fileStream))
                     .thenReturn(s3Resource);
-            when(s3Resource.exists())
-                    .thenReturn(true);
 
             // Act
-            s3Adapter.uploadFile(BUCKET_NAME, FILE_KEY, fileStream);
+            final boolean result = s3Adapter.uploadFile(BUCKET_NAME, FILE_KEY, fileStream);
 
             // Assert
-            final InOrder inOrder = inOrder(s3Template, s3Resource);
-            inOrder.verify(s3Template).upload(BUCKET_NAME, FILE_KEY, fileStream);
-            inOrder.verify(s3Resource).exists();
+            assertTrue(result);
+            verify(s3Template, times(1)).upload(BUCKET_NAME, FILE_KEY, fileStream);
+            verify(loggerPort, times(1)).info(
+                    "[S3Adapter][uploadFile] Starting upload to S3, bucket={}, key={}",
+                    BUCKET_NAME, FILE_KEY);
+            verify(loggerPort, times(1)).info(
+                    "[S3Adapter][uploadFile] Upload completed successfully, bucket={}, key={}",
+                    BUCKET_NAME, FILE_KEY);
         }
 
         @Test
