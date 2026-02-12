@@ -1,5 +1,5 @@
 # ----- BUILD PHASE -----
-FROM eclipse-temurin:25-jdk-alpine AS build
+FROM amazoncorretto:21-alpine AS build
 
 WORKDIR /app
 
@@ -13,7 +13,7 @@ RUN mvn clean package -DskipTests
 
 
 # ----- RUNTIME PHASE -----
-FROM amazoncorretto:25-alpine
+FROM amazoncorretto:21-alpine
 
 WORKDIR /app
 
