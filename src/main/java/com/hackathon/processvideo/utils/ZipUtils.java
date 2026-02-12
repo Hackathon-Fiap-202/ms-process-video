@@ -71,6 +71,9 @@ public class ZipUtils {
 
 
     private static File createSecureTempFile(String prefix, String suffix) throws IOException {
+
+        final Path tempDir = getSecureTempDirectory();
+
         try {
             final Set<PosixFilePermission> permissions = EnumSet.of(
                     PosixFilePermission.OWNER_READ,
@@ -78,39 +81,149 @@ public class ZipUtils {
             );
             final FileAttribute<Set<PosixFilePermission>> attrs = PosixFilePermissions.asFileAttribute(permissions);
 
-            final Path tempPath = Files.createTempFile(prefix, suffix, attrs);
+            final Path tempPath = Files.createTempFile(tempDir, prefix, suffix, attrs);
             LOGGER.log(Level.FINE, "Secure temp file created with restricted permissions, path={0}", tempPath);
             return tempPath.toFile();
         } catch (UnsupportedOperationException e) {
             // POSIX permissions not supported (e.g., on Windows or certain filesystems)
-            LOGGER.log(Level.FINE, "POSIX permissions not supported, using default temp file creation");
-            final Path tempPath = Files.createTempFile(prefix, suffix);
+            LOGGER.log(Level.FINE, "POSIX permissions not supported, using fallback permission method");
+            final Path tempPath = Files.createTempFile(tempDir, prefix, suffix);
             final File tempFile = tempPath.toFile();
 
-            // On Windows, set file to be readable/writable by owner only via file permissions
             try {
-                if (!tempFile.setReadable(false, false)) { // Remove all other permissions
-                    LOGGER.log(Level.FINE, "Could not remove readable permission");
-                }
-                if (!tempFile.setWritable(false, false)) {
-                    LOGGER.log(Level.FINE, "Could not remove writable permission");
-                }
-                if (!tempFile.setExecutable(false, false)) {
-                    LOGGER.log(Level.FINE, "Could not remove executable permission");
-                }
-                if (!tempFile.setReadable(true, true)) {  // Add owner read
-                    LOGGER.log(Level.FINE, "Could not set owner readable permission");
-                }
-                if (!tempFile.setWritable(true, true)) {  // Add owner write
-                    LOGGER.log(Level.FINE, "Could not set owner writable permission");
-                }
+                applyFilePermissions(tempFile);
                 LOGGER.log(Level.FINE, "Applied file permissions for Windows, path={0}", tempFile);
             } catch (SecurityException se) {
                 LOGGER.log(Level.WARNING, "Could not set file permissions, error=" + se.getMessage());
+                // If we can't set secure permissions, the file is in an insecure state - delete it
+                if (tempFile.exists() && !tempFile.delete()) {
+                    tempFile.deleteOnExit();
+                }
+                throw new IOException("Failed to set secure permissions on temp file", se);
             }
 
             return tempFile;
         }
+    }
+
+    /**
+     * Applies restrictive file permissions: removes all permissions except owner read/write.
+     * First restricts all permissions, then grants only owner permissions.
+     *
+     * @param file the file to apply permissions to
+     * @throws SecurityException if permissions cannot be set
+     */
+    private static void applyFilePermissions(File file) throws SecurityException {
+        // First, restrict all permissions
+        if (!file.setReadable(false, false)) { // Remove all other permissions
+            LOGGER.log(Level.FINE, "Could not remove readable permission");
+        }
+        if (!file.setWritable(false, false)) {
+            LOGGER.log(Level.FINE, "Could not remove writable permission");
+        }
+        if (!file.setExecutable(false, false)) {
+            LOGGER.log(Level.FINE, "Could not remove executable permission");
+        }
+        // Then, grant only owner permissions
+        if (!file.setReadable(true, true)) {  // Add owner read
+            LOGGER.log(Level.FINE, "Could not set owner readable permission");
+        }
+        if (!file.setWritable(true, true)) {  // Add owner write
+            LOGGER.log(Level.FINE, "Could not set owner writable permission");
+        }
+    }
+
+    /**
+     * Applies restrictive directory permissions: removes all permissions except owner read/write/execute.
+     *
+     * @param directory the directory to apply permissions to
+     * @throws SecurityException if permissions cannot be set
+     */
+    private static void applyDirectoryPermissions(File directory) throws SecurityException {
+        if (!directory.setReadable(false, false)) {
+            LOGGER.log(Level.FINE, "Could not remove readable permission");
+        }
+        if (!directory.setWritable(false, false)) {
+            LOGGER.log(Level.FINE, "Could not remove writable permission");
+        }
+        if (!directory.setExecutable(false, false)) {
+            LOGGER.log(Level.FINE, "Could not remove executable permission");
+        }
+        if (!directory.setReadable(true, true)) {
+            LOGGER.log(Level.FINE, "Could not set owner readable permission");
+        }
+        if (!directory.setWritable(true, true)) {
+            LOGGER.log(Level.FINE, "Could not set owner writable permission");
+        }
+        if (!directory.setExecutable(true, true)) {
+            LOGGER.log(Level.FINE, "Could not set owner executable permission");
+        }
+    }
+
+    /**
+     * Gets or creates a secure temporary directory with restricted permissions.
+     * Uses app.temp.dir system property if configured, otherwise creates a secure
+     * subdirectory within the system temp to avoid using publicly writable locations directly.
+     *
+     * @return Path to the secure temp directory
+     * @throws IOException if the directory cannot be created
+     */
+    private static Path getSecureTempDirectory() throws IOException {
+        final String customTempDir = System.getProperty("app.temp.dir");
+
+        if (customTempDir != null && !customTempDir.trim().isEmpty()) {
+            final Path dirPath = Path.of(customTempDir);
+            if (!Files.exists(dirPath)) {
+                try {
+                    final Set<PosixFilePermission> dirPermissions = EnumSet.of(
+                            PosixFilePermission.OWNER_READ,
+                            PosixFilePermission.OWNER_WRITE,
+                            PosixFilePermission.OWNER_EXECUTE
+                    );
+                    final FileAttribute<Set<PosixFilePermission>> attrs = PosixFilePermissions.asFileAttribute(dirPermissions);
+                    Files.createDirectories(dirPath, attrs);
+                    LOGGER.log(Level.FINE, "Created secure temp directory with POSIX permissions, path={0}", dirPath);
+                } catch (UnsupportedOperationException e) {
+                    // POSIX not supported, create normally and set permissions
+                    Files.createDirectories(dirPath);
+                    try {
+                        final File dirFile = dirPath.toFile();
+                        applyDirectoryPermissions(dirFile);
+                        LOGGER.log(Level.FINE, "Applied directory permissions for Windows, path={0}", dirPath);
+                    } catch (SecurityException se) {
+                        LOGGER.log(Level.WARNING, "Could not set directory permissions, error=" + se.getMessage());
+                    }
+                }
+            }
+            return dirPath;
+        }
+
+        final String appName = "processvideo";
+        final Path secureTempSubdir = Path.of(System.getProperty("java.io.tmpdir"), appName);
+
+        if (!Files.exists(secureTempSubdir)) {
+            try {
+                final Set<PosixFilePermission> dirPermissions = EnumSet.of(
+                        PosixFilePermission.OWNER_READ,
+                        PosixFilePermission.OWNER_WRITE,
+                        PosixFilePermission.OWNER_EXECUTE
+                );
+                final FileAttribute<Set<PosixFilePermission>> attrs = PosixFilePermissions.asFileAttribute(dirPermissions);
+                Files.createDirectories(secureTempSubdir, attrs);
+                LOGGER.log(Level.FINE, "Created secure temp subdirectory with POSIX permissions, path={0}", secureTempSubdir);
+            } catch (UnsupportedOperationException e) {
+                Files.createDirectories(secureTempSubdir);
+                try {
+                    final File subDirFile = secureTempSubdir.toFile();
+                    applyDirectoryPermissions(subDirFile);
+                    LOGGER.log(Level.FINE, "Applied directory permissions for Windows, path={0}", secureTempSubdir);
+                } catch (SecurityException se) {
+                    LOGGER.log(Level.WARNING, "Could not set directory permissions, error=" + se.getMessage());
+                }
+            }
+        }
+
+        return secureTempSubdir;
     }
 
     private static class FileDeletingInputStream extends FileInputStream {
