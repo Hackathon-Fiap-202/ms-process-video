@@ -4,7 +4,6 @@ import com.hackathon.processvideo.domain.exception.FileNotExistException;
 import com.hackathon.processvideo.domain.exception.VideoProcessingException;
 import com.hackathon.processvideo.domain.port.out.FileServicePort;
 import com.hackathon.processvideo.domain.port.out.LoggerPort;
-import io.awspring.cloud.s3.S3Resource;
 import io.awspring.cloud.s3.S3Template;
 import java.io.IOException;
 import java.io.InputStream;
@@ -44,16 +43,18 @@ public class S3Adapter implements FileServicePort {
     public boolean uploadFile(String bucketName, String key, InputStream file) {
         try (file) {
             loggerPort.info("[S3Adapter][uploadFile] Starting upload to S3, bucket={}, key={}", bucketName, key);
-            final S3Resource upload = s3Template.upload(bucketName, key, file);
-            final boolean exists = upload.exists();
-            if (exists) {
-                loggerPort.info("[S3Adapter][uploadFile] Upload completed successfully, bucket={}, key={}", bucketName, key);
-            } else {
-                loggerPort.error("[S3Adapter][uploadFile] Upload verification failed, bucket={}, key={}", bucketName, key);
-            }
-            return exists;
+            s3Template.upload(bucketName, key, file);
+            loggerPort.info("[S3Adapter][uploadFile] Upload completed successfully, bucket={}, key={}", bucketName, key);
+            return true;
         } catch (IOException e) {
-            loggerPort.error("[S3Adapter][uploadFile] Error during upload to S3, bucket={}, key={}, error={}", bucketName, key, e.getMessage());
+            loggerPort.error(
+                    "[S3Adapter][uploadFile] IOException during upload to S3, bucket={}, key={}, error={}",
+                    bucketName, key, e.getMessage());
+            return false;
+        } catch (software.amazon.awssdk.core.exception.SdkException e) {
+            loggerPort.error(
+                    "[S3Adapter][uploadFile] AWS SDK error during upload to S3, bucket={}, key={}, error={}",
+                    bucketName, key, e.getMessage());
             return false;
         }
     }

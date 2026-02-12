@@ -28,6 +28,12 @@ public class ZipUtils {
     private static final String TEMP_FILE_PREFIX = "video_frames_";
     private static final String TEMP_FILE_SUFFIX = ".zip";
 
+    // Permission type constants
+    private static final String PERMISSION_READABLE = "setReadable";
+    private static final String PERMISSION_WRITABLE = "setWritable";
+    private static final String PERMISSION_EXECUTABLE = "setExecutable";
+    private static final int PERMISSION_PREFIX_LENGTH = 3; // Length of "set" prefix
+
     private ZipUtils() {
     }
 
@@ -46,9 +52,10 @@ public class ZipUtils {
 
         } catch (IOException e) {
             if (tempZip != null && tempZip.exists()) {
-                final boolean deleted = tempZip.delete();
-                if (!deleted) {
-                    LOGGER.log(Level.WARNING, "Não foi possível deletar ZIP temporário após erro.");
+                try {
+                    Files.delete(tempZip.toPath());
+                } catch (IOException deleteException) {
+                    LOGGER.log(Level.WARNING, "Não foi possível deletar ZIP temporário após erro: {0}", deleteException.getMessage());
                 }
             }
             throw new VideoProcessingException("Erro ao processar compressão de arquivos", e);
@@ -65,8 +72,11 @@ public class ZipUtils {
 
         zos.closeEntry();
 
-        if (!file.delete()) {
-            LOGGER.log(Level.WARNING, "Falha ao deletar arquivo: {0}. Agendando deleção para o encerramento.", file.getAbsolutePath());
+        try {
+            Files.delete(file.toPath());
+        } catch (IOException e) {
+            LOGGER.log(Level.WARNING, "Falha ao deletar arquivo: {0}. Agendando deleção para o encerramento: {1}",
+                    new Object[]{file.getAbsolutePath(), e.getMessage()});
             file.deleteOnExit();
         }
     }
@@ -96,12 +106,8 @@ public class ZipUtils {
                 applyFilePermissions(tempFile);
                 LOGGER.log(Level.FINE, "Applied file permissions for Windows, path={0}", tempFile);
             } catch (SecurityException se) {
-                LOGGER.log(Level.WARNING, "Could not set file permissions, error=" + se.getMessage());
-                // If we can't set secure permissions, the file is in an insecure state - delete it
-                if (tempFile.exists() && !tempFile.delete()) {
-                    tempFile.deleteOnExit();
-                }
-                throw new IOException("Failed to set secure permissions on temp file", se);
+                handleFilePermissionError(tempFile, se);
+                throw new IOException("Failed to set secure permissions on temp file: " + se.getMessage(), se);
             }
 
             return tempFile;
@@ -116,43 +122,63 @@ public class ZipUtils {
      * @throws SecurityException if permissions cannot be set
      */
     private static void applyFilePermissions(File file) throws SecurityException {
-        // First, restrict all permissions
-        if (!file.setReadable(false, false)) {
-            LOGGER.log(Level.FINE, "Could not remove readable permission");
-        }
-        if (!file.setWritable(false, false)) {
-            LOGGER.log(Level.FINE, "Could not remove writable permission");
-        }
-        if (!file.setExecutable(false, false)) {
-            LOGGER.log(Level.FINE, "Could not remove executable permission");
-        }
-        // Then, grant only owner permissions
-        if (!file.setReadable(true, true)) {
-            LOGGER.log(Level.FINE, "Could not set owner readable permission");
-        }
-        if (!file.setWritable(true, true)) {
-            LOGGER.log(Level.FINE, "Could not set owner writable permission");
-        }
+        applyRestrictivePermissions(file, false);
     }
 
     private static void applyDirectoryPermissions(File directory) throws SecurityException {
-        if (!directory.setReadable(false, false)) {
-            LOGGER.log(Level.FINE, "Could not remove readable permission");
+        applyRestrictivePermissions(directory, true);
+    }
+
+    /**
+     * Applies restrictive permissions to a file or directory.
+     * Removes all permissions, then grants only owner permissions.
+     *
+     * @param fileOrDir   the file or directory to apply permissions to
+     * @param isDirectory true if applying to a directory, false if applying to a file
+     * @throws SecurityException if permissions cannot be set
+     */
+    private static void applyRestrictivePermissions(File fileOrDir, boolean isDirectory) throws SecurityException {
+        // First, restrict all permissions
+        applyPermission(fileOrDir, PERMISSION_READABLE, false, false);
+        applyPermission(fileOrDir, PERMISSION_WRITABLE, false, false);
+        applyPermission(fileOrDir, PERMISSION_EXECUTABLE, false, false);
+
+        // Then, grant only owner permissions
+        applyPermission(fileOrDir, PERMISSION_READABLE, true, true);
+        applyPermission(fileOrDir, PERMISSION_WRITABLE, true, true);
+
+        // Directories need execute permission for owner
+        if (isDirectory) {
+            applyPermission(fileOrDir, PERMISSION_EXECUTABLE, true, true);
         }
-        if (!directory.setWritable(false, false)) {
-            LOGGER.log(Level.FINE, "Could not remove writable permission");
+    }
+
+    /**
+     * Applies a single permission setting and logs if it fails.
+     *
+     * @param fileOrDir      the file or directory
+     * @param permissionType the type of permission (setReadable, setWritable, setExecutable)
+     * @param value          the value to set
+     * @param ownerOnly      whether to apply only to owner
+     */
+    private static void applyPermission(File fileOrDir, String permissionType, boolean value, boolean ownerOnly) {
+        boolean success = false;
+        try {
+            success = switch (permissionType) {
+                case PERMISSION_READABLE -> fileOrDir.setReadable(value, ownerOnly);
+                case PERMISSION_WRITABLE -> fileOrDir.setWritable(value, ownerOnly);
+                case PERMISSION_EXECUTABLE -> fileOrDir.setExecutable(value, ownerOnly);
+                default -> false;
+            };
+        } catch (SecurityException e) {
+            LOGGER.log(Level.FINE, "Exception while applying {0} permission: {1}",
+                    new Object[]{permissionType, e.getMessage()});
         }
-        if (!directory.setExecutable(false, false)) {
-            LOGGER.log(Level.FINE, "Could not remove executable permission");
-        }
-        if (!directory.setReadable(true, true)) {
-            LOGGER.log(Level.FINE, "Could not set owner readable permission");
-        }
-        if (!directory.setWritable(true, true)) {
-            LOGGER.log(Level.FINE, "Could not set owner writable permission");
-        }
-        if (!directory.setExecutable(true, true)) {
-            LOGGER.log(Level.FINE, "Could not set owner executable permission");
+
+        if (!success) {
+            LOGGER.log(Level.FINE, "Could not {0} {1} permission",
+                    new Object[]{value ? "set" : "remove",
+                            permissionType.substring(PERMISSION_PREFIX_LENGTH).toLowerCase()});
         }
     }
 
@@ -162,26 +188,7 @@ public class ZipUtils {
         if (customTempDir != null && !customTempDir.trim().isEmpty()) {
             final Path dirPath = Path.of(customTempDir);
             if (!Files.exists(dirPath)) {
-                try {
-                    final Set<PosixFilePermission> dirPermissions = EnumSet.of(
-                            PosixFilePermission.OWNER_READ,
-                            PosixFilePermission.OWNER_WRITE,
-                            PosixFilePermission.OWNER_EXECUTE
-                    );
-                    final FileAttribute<Set<PosixFilePermission>> attrs = PosixFilePermissions.asFileAttribute(dirPermissions);
-                    Files.createDirectories(dirPath, attrs);
-                    LOGGER.log(Level.FINE, "Created secure temp directory with POSIX permissions, path={0}", dirPath);
-                } catch (UnsupportedOperationException e) {
-                    // POSIX not supported, create normally and set permissions
-                    Files.createDirectories(dirPath);
-                    try {
-                        final File dirFile = dirPath.toFile();
-                        applyDirectoryPermissions(dirFile);
-                        LOGGER.log(Level.FINE, "Applied directory permissions for Windows, path={0}", dirPath);
-                    } catch (SecurityException se) {
-                        LOGGER.log(Level.WARNING, "Could not set directory permissions, error=" + se.getMessage());
-                    }
-                }
+                createSecureDirectory(dirPath);
             }
             return dirPath;
         }
@@ -190,28 +197,55 @@ public class ZipUtils {
         final Path secureTempSubdir = Path.of(System.getProperty("java.io.tmpdir"), appName);
 
         if (!Files.exists(secureTempSubdir)) {
-            try {
-                final Set<PosixFilePermission> dirPermissions = EnumSet.of(
-                        PosixFilePermission.OWNER_READ,
-                        PosixFilePermission.OWNER_WRITE,
-                        PosixFilePermission.OWNER_EXECUTE
-                );
-                final FileAttribute<Set<PosixFilePermission>> attrs = PosixFilePermissions.asFileAttribute(dirPermissions);
-                Files.createDirectories(secureTempSubdir, attrs);
-                LOGGER.log(Level.FINE, "Created secure temp subdirectory with POSIX permissions, path={0}", secureTempSubdir);
-            } catch (UnsupportedOperationException e) {
-                Files.createDirectories(secureTempSubdir);
-                try {
-                    final File subDirFile = secureTempSubdir.toFile();
-                    applyDirectoryPermissions(subDirFile);
-                    LOGGER.log(Level.FINE, "Applied directory permissions for Windows, path={0}", secureTempSubdir);
-                } catch (SecurityException se) {
-                    LOGGER.log(Level.WARNING, "Could not set directory permissions, error=" + se.getMessage());
-                }
-            }
+            createSecureDirectory(secureTempSubdir);
         }
 
         return secureTempSubdir;
+    }
+
+    private static void createSecureDirectory(Path dirPath) throws IOException {
+        try {
+            final Set<PosixFilePermission> dirPermissions = EnumSet.of(
+                    PosixFilePermission.OWNER_READ,
+                    PosixFilePermission.OWNER_WRITE,
+                    PosixFilePermission.OWNER_EXECUTE
+            );
+            final FileAttribute<Set<PosixFilePermission>> attrs = PosixFilePermissions.asFileAttribute(dirPermissions);
+            Files.createDirectories(dirPath, attrs);
+            LOGGER.log(Level.FINE, "Created secure temp directory with POSIX permissions, path={0}", dirPath);
+        } catch (UnsupportedOperationException e) {
+            // POSIX not supported, create normally and set permissions
+            Files.createDirectories(dirPath);
+            applyWindowsDirectoryPermissions(dirPath);
+        }
+    }
+
+    private static void applyWindowsDirectoryPermissions(Path dirPath) throws IOException {
+        try {
+            final File dirFile = dirPath.toFile();
+            applyDirectoryPermissions(dirFile);
+            LOGGER.log(Level.FINE, "Applied directory permissions for Windows, path={0}", dirPath);
+        } catch (SecurityException se) {
+            handleDirectoryPermissionError(dirPath, se);
+            throw new IOException("Failed to set secure directory permissions on " + dirPath + ": " + se.getMessage(), se);
+        }
+    }
+
+    private static void handleFilePermissionError(File tempFile, SecurityException se) {
+        LOGGER.log(Level.WARNING, "Could not set file permissions on temp file {0}: {1}",
+                new Object[]{tempFile.getAbsolutePath(), se.getMessage()});
+        try {
+            Files.delete(tempFile.toPath());
+        } catch (IOException e) {
+            tempFile.deleteOnExit();
+            LOGGER.log(Level.FINE, "Failed to delete insecure temp file, scheduling for deletion on exit: {0}",
+                    tempFile.getAbsolutePath());
+        }
+    }
+
+    private static void handleDirectoryPermissionError(Path dirPath, SecurityException se) {
+        LOGGER.log(Level.WARNING, "Failed to set directory permissions on {0}: {1}",
+                new Object[]{dirPath.toAbsolutePath(), se.getMessage()});
     }
 
     private static class FileDeletingInputStream extends FileInputStream {
@@ -228,9 +262,11 @@ public class ZipUtils {
                 super.close();
             } finally {
                 if (file.exists()) {
-                    final boolean deleted = file.delete();
-                    if (!deleted) {
-                        LOGGER.log(Level.WARNING, "Não foi possível limpar o ZIP temporário: {0}", file.getAbsolutePath());
+                    try {
+                        Files.delete(file.toPath());
+                    } catch (IOException e) {
+                        LOGGER.log(Level.WARNING, "Não foi possível limpar o ZIP temporário: {0}: {1}",
+                                new Object[]{file.getAbsolutePath(), e.getMessage()});
                         file.deleteOnExit();
                     }
                 }

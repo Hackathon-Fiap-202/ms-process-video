@@ -97,13 +97,9 @@ public class FramesExtractor implements VideoFrameExtractorPort {
     }
 
     private void extractFramesInBackground(File tempVideo, PipedOutputStream pos) {
-        SeekableByteChannel ch = null;
-        ZipOutputStream zos = null;
-
-        try {
+        try (SeekableByteChannel ch = NIOUtils.readableChannel(tempVideo);
+             ZipOutputStream zos = new ZipOutputStream(pos)) {
             loggerPort.debug("[FramesExtractor][extractFramesInBackground] {} Opening video file channel", getThreadInfo());
-            ch = NIOUtils.readableChannel(tempVideo);
-            zos = new ZipOutputStream(pos);
 
             loggerPort.debug("[FramesExtractor][extractFramesInBackground] {} Creating frame grabber", getThreadInfo());
             final FrameGrab grab = FrameGrab.createFrameGrab(ch);
@@ -131,7 +127,7 @@ public class FramesExtractor implements VideoFrameExtractorPort {
                             e.getMessage());
             handleExtractionError(e, pos);
         } finally {
-            closeResourcesSafely(ch, zos, pos, tempVideo);
+            closeResourcesSafely(pos, tempVideo);
         }
     }
 
@@ -210,37 +206,14 @@ public class FramesExtractor implements VideoFrameExtractorPort {
     }
 
     private void closeResourcesSafely(
-            SeekableByteChannel ch,
-            ZipOutputStream zos,
             PipedOutputStream pos,
             File tempFile
     ) {
         loggerPort.debug("[FramesExtractor][closeResourcesSafely] Closing all resources");
-        closeZipOutputStream(zos);
-        closeSeekableByteChannel(ch);
         closePipedOutputStream(pos);
         deleteTempFile(tempFile);
     }
 
-    private void closeZipOutputStream(ZipOutputStream zos) {
-        try {
-            if (zos != null) {
-                zos.close();
-            }
-        } catch (IOException e) {
-            loggerPort.warn("[FramesExtractor][closeZipOutputStream] Failed to close ZipOutputStream");
-        }
-    }
-
-    private void closeSeekableByteChannel(SeekableByteChannel ch) {
-        try {
-            if (ch != null) {
-                ch.close();
-            }
-        } catch (IOException e) {
-            loggerPort.warn("[FramesExtractor][closeSeekableByteChannel] Failed to close SeekableByteChannel");
-        }
-    }
 
     private void closePipedOutputStream(PipedOutputStream pos) {
         try {
@@ -252,19 +225,10 @@ public class FramesExtractor implements VideoFrameExtractorPort {
         }
     }
 
-    /**
-     * Creates a temporary file with secure permissions (read/write for owner only).
-     * Uses Java NIO Files API to ensure proper file permissions on Unix-like systems.
-     * Attempts to use an app-specific secure temp directory if configured.
-     *
-     * @param prefix the prefix for the temp file name
-     * @param suffix the suffix for the temp file name
-     * @return a File object representing the securely created temporary file
-     * @throws IOException if the temporary file cannot be created
-     */
+
     private File createSecureTempFile(String prefix, String suffix) throws IOException {
         // Attempt to use app-specific secure temp directory
-        Path tempDir = getSecureTempDirectory();
+        final Path tempDir = getSecureTempDirectory();
 
         try {
             final Set<PosixFilePermission> permissions = EnumSet.of(
@@ -308,63 +272,80 @@ public class FramesExtractor implements VideoFrameExtractorPort {
         }
     }
 
-    /**
-     * Gets or creates a secure temporary directory with restricted permissions.
-     * Uses app.temp.dir system property if configured, otherwise uses system temp.
-     *
-     * @return Path to the secure temp directory
-     * @throws IOException if the directory cannot be created
-     */
+
     private Path getSecureTempDirectory() throws IOException {
-        String customTempDir = System.getProperty(SECURE_TEMP_DIR_PROPERTY);
+        final String customTempDir = System.getProperty(SECURE_TEMP_DIR_PROPERTY);
 
         if (customTempDir != null && !customTempDir.trim().isEmpty()) {
-            Path dirPath = Path.of(customTempDir);
+            final Path dirPath = Path.of(customTempDir);
             if (!Files.exists(dirPath)) {
-                try {
-                    final Set<PosixFilePermission> dirPermissions = EnumSet.of(
-                            PosixFilePermission.OWNER_READ,
-                            PosixFilePermission.OWNER_WRITE,
-                            PosixFilePermission.OWNER_EXECUTE
-                    );
-                    final FileAttribute<Set<PosixFilePermission>> attrs = PosixFilePermissions.asFileAttribute(dirPermissions);
-                    Files.createDirectories(dirPath, attrs);
-                    loggerPort.debug("[FramesExtractor][getSecureTempDirectory] Created secure temp directory, path={}", dirPath);
-                } catch (UnsupportedOperationException e) {
-                    // POSIX not supported, create normally and set permissions
-                    Files.createDirectories(dirPath);
-                    try {
-                        dirPath.toFile().setReadable(false, false);
-                        dirPath.toFile().setWritable(false, false);
-                        dirPath.toFile().setExecutable(false, false);
-                        dirPath.toFile().setReadable(true, true);
-                        dirPath.toFile().setWritable(true, true);
-                        dirPath.toFile().setExecutable(true, true);
-                        loggerPort.debug("[FramesExtractor][getSecureTempDirectory] Applied directory permissions for Windows");
-                    } catch (SecurityException se) {
-                        loggerPort.warn("[FramesExtractor][getSecureTempDirectory] Could not set directory permissions, error={}", se.getMessage());
-                    }
-                }
+                createSecureDirectory(dirPath);
             }
             return dirPath;
         }
 
-        // Fall back to system temp directory
         return Path.of(System.getProperty("java.io.tmpdir"));
+    }
+
+
+    private void createSecureDirectory(Path dirPath) throws IOException {
+        try {
+            final Set<PosixFilePermission> dirPermissions = EnumSet.of(
+                    PosixFilePermission.OWNER_READ,
+                    PosixFilePermission.OWNER_WRITE,
+                    PosixFilePermission.OWNER_EXECUTE
+            );
+            final FileAttribute<Set<PosixFilePermission>> attrs = PosixFilePermissions.asFileAttribute(dirPermissions);
+            Files.createDirectories(dirPath, attrs);
+            loggerPort.debug("[FramesExtractor][getSecureTempDirectory] Created secure temp directory, path={}", dirPath);
+        } catch (UnsupportedOperationException e) {
+            // POSIX not supported, create normally and set permissions
+            Files.createDirectories(dirPath);
+            // Set Windows-style permissions
+            try {
+                final File dirFile = dirPath.toFile();
+                if (!dirFile.setReadable(false, false)) {
+                    loggerPort.debug("[FramesExtractor][getSecureTempDirectory] Could not remove/set readable permission");
+                }
+                if (!dirFile.setWritable(false, false)) {
+                    loggerPort.debug("[FramesExtractor][getSecureTempDirectory] Could not remove/set writable permission");
+                }
+                if (!dirFile.setExecutable(false, false)) {
+                    loggerPort.debug("[FramesExtractor][getSecureTempDirectory] Could not remove/set executable permission");
+                }
+                if (!dirFile.setReadable(true, true)) {
+                    loggerPort.debug("[FramesExtractor][getSecureTempDirectory] Could not remove/set owner readable permission");
+                }
+                if (!dirFile.setWritable(true, true)) {
+                    loggerPort.debug("[FramesExtractor][getSecureTempDirectory] Could not remove/set owner writable permission");
+                }
+                if (!dirFile.setExecutable(true, true)) {
+                    loggerPort.debug("[FramesExtractor][getSecureTempDirectory] Could not remove/set owner executable permission");
+                }
+                loggerPort.debug("[FramesExtractor][getSecureTempDirectory] Applied directory permissions for Windows");
+            } catch (SecurityException se) {
+                loggerPort.warn("[FramesExtractor][getSecureTempDirectory] Could not set directory permissions, error={}", se.getMessage());
+            }
+        }
     }
 
     private void deleteTempFile(File tempFile) {
         try {
             if (tempFile != null && tempFile.exists()) {
-                if (!tempFile.delete()) {
-                    tempFile.deleteOnExit();
-                    loggerPort.debug("[FramesExtractor][deleteTempFile] Temp file scheduled for deletion, path={}", tempFile.getAbsolutePath());
-                } else {
-                    loggerPort.debug("[FramesExtractor][deleteTempFile] Temp file deleted, path={}", tempFile.getAbsolutePath());
-                }
+                deleteFileWithFallback(tempFile);
             }
         } catch (SecurityException e) {
             loggerPort.warn("[FramesExtractor][deleteTempFile] Failed to delete temp file");
+        }
+    }
+
+    private void deleteFileWithFallback(File tempFile) {
+        try {
+            Files.delete(tempFile.toPath());
+            loggerPort.debug("[FramesExtractor][deleteTempFile] Temp file deleted, path={}", tempFile.getAbsolutePath());
+        } catch (IOException e) {
+            tempFile.deleteOnExit();
+            loggerPort.debug("[FramesExtractor][deleteTempFile] Temp file scheduled for deletion, path={}", tempFile.getAbsolutePath());
         }
     }
 
@@ -429,6 +410,7 @@ public class FramesExtractor implements VideoFrameExtractorPort {
                 } catch (InterruptedException ie) {
                     loggerPort.error("[FramesExtractor][submitFrameExtractionTasks] Interrupted while queuing error, error={}",
                             ie.getMessage());
+                    Thread.currentThread().interrupt();
                 }
                 Thread.currentThread().interrupt();
             } catch (IOException | JCodecException e) {
@@ -621,10 +603,6 @@ public class FramesExtractor implements VideoFrameExtractorPort {
             synchronized (lock) {
                 writer.write(image, zos, frameIndex);
             }
-        }
-
-        ZipOutputStream getZipOutputStream() {
-            return zos;
         }
     }
 }

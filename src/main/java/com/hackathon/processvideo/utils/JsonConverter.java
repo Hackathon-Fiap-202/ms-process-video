@@ -9,9 +9,6 @@ import org.springframework.stereotype.Component;
 @Component
 public class JsonConverter {
 
-    private static final String ERROR_CONVERT_JSON = "[JsonConverter][ERROR] Failed to convert JSON to Event: {}";
-    private static final String ERROR_CONVERT_OBJ = "[JsonConverter][ERROR] Failed to convert object to JSON: {}";
-
     private final ObjectMapper objectMapper;
 
     public JsonConverter(ObjectMapper objectMapper) {

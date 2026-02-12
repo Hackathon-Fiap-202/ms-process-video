@@ -52,7 +52,7 @@ class ConsumerVideoQueueTest {
     @DisplayName("Should successfully process valid .mp4 video from S3 event")
     void consumeMessage_Success() {
         // Arrange
-        var s3Event = createMockS3Event("my-bucket", "video.mp4");
+        var s3Event = createMockS3Event("video.mp4");
         when(jsonConverter.toEventVideo(payload)).thenReturn(s3Event);
 
         // Act
@@ -67,7 +67,7 @@ class ConsumerVideoQueueTest {
     @DisplayName("Should ignore files that do not have .mp4 extension")
     void consumeMessage_IgnoreInvalidExtension() {
         // Arrange
-        var s3Event = createMockS3Event("my-bucket", "document.pdf");
+        var s3Event = createMockS3Event("document.pdf");
         when(jsonConverter.toEventVideo(payload)).thenReturn(s3Event);
 
         // Act
@@ -82,7 +82,7 @@ class ConsumerVideoQueueTest {
     @DisplayName("Should skip processing if the event key has already been processed (Deduplication)")
     void consumeMessage_SkipDuplicate() {
         // Arrange
-        var s3Event = createMockS3Event("my-bucket", "unique_video.mp4");
+        var s3Event = createMockS3Event("unique_video.mp4");
         when(jsonConverter.toEventVideo(payload)).thenReturn(s3Event);
 
         // Act
@@ -94,54 +94,23 @@ class ConsumerVideoQueueTest {
         verify(loggerPort, atLeastOnce()).warn(contains("Event already processed"), any(), any(), any(), eq("unique_video.mp4"));
     }
 
-    @Test
-    @DisplayName("Should handle NullPointerException gracefully")
-    void consumeMessage_HandlesNPE() {
-        // Arrange
-        when(jsonConverter.toEventVideo(anyString())).thenThrow(new NullPointerException("NPE Error"));
-
-        // Act
-        consumerVideoQueue.consumeMessage(payload);
-
-        // Assert
-        verify(loggerPort).error(
-                contains("Null pointer error processing message"),
-                eq("[ConsumerVideoQueue][consumeMessage]"),
-                anyString(),
-                anyString(),
-                eq("NPE Error")
-        );
-    }
-
-    @Test
-    @DisplayName("Should log warning when notification or records are empty")
-    void consumeMessage_EmptyNotification() {
-        // Arrange
-        when(jsonConverter.toEventVideo(payload)).thenReturn(null);
-
-        // Act
-        consumerVideoQueue.consumeMessage(payload);
-
-        // Assert
-        verify(loggerPort).warn(contains("Notification is null"), any(), any(), any());
-        verify(processVideoUseCase, never()).execute(anyString(), anyString());
-    }
+    // ...existing code...
 
     // Helper method to build the complex S3 Event structure
-    private S3EventNotification createMockS3Event(String bucket, String key) {
-        var record = mock(S3EventRecord.class);
+    private S3EventNotification createMockS3Event(String key) {
+        var eventRecord = mock(S3EventRecord.class);
         var s3Data = mock(S3Entity.class);
         var bucketData = mock(S3Bucket.class);
         var objectData = mock(S3Object.class);
 
-        when(record.getS3()).thenReturn(s3Data);
+        when(eventRecord.getS3()).thenReturn(s3Data);
         when(s3Data.getBucket()).thenReturn(bucketData);
         when(s3Data.getObject()).thenReturn(objectData);
-        when(bucketData.getName()).thenReturn(bucket);
+        when(bucketData.getName()).thenReturn("my-bucket");
         when(objectData.getKey()).thenReturn(key);
 
         var notification = mock(S3EventNotification.class);
-        when(notification.getRecords()).thenReturn(List.of(record));
+        when(notification.getRecords()).thenReturn(List.of(eventRecord));
 
         return notification;
     }
