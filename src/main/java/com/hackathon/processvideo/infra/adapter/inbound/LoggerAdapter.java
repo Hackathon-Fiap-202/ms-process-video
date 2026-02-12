@@ -25,17 +25,23 @@ public class LoggerAdapter implements LoggerPort {
 
     @Override
     public void warn(String msg, Object... args) {
-        logger.warn(msg, sanitize(args));
+        if (logger.isWarnEnabled()) {
+            logger.warn(msg, sanitize(args));
+        }
     }
 
     @Override
     public void error(String msg, Throwable t, Object... args) {
-        logger.error(String.format(msg, sanitize(args)), t);
+        if (logger.isErrorEnabled()) {
+            logger.error(String.format(msg, sanitize(args)), t);
+        }
     }
 
     @Override
     public void error(String msg, Object... args) {
-        logger.error(msg, sanitize(args));
+        if (logger.isErrorEnabled()) {
+            logger.error(msg, sanitize(args));
+        }
     }
 
     private Object[] sanitize(Object... args) {

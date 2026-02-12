@@ -36,7 +36,6 @@ class FramesExtractorTest {
     @BeforeEach
     void setUp() {
         loggerPort = mock(LoggerPort.class);
-        // Capacidade 1 na fila para facilitar bloqueios em testes de concorrência
         framesExtractor = new FramesExtractor(loggerPort, 2, 1);
     }
 

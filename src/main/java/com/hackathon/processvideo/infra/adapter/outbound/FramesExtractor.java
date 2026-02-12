@@ -11,6 +11,13 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.PipedInputStream;
 import java.io.PipedOutputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.attribute.FileAttribute;
+import java.nio.file.attribute.PosixFilePermission;
+import java.nio.file.attribute.PosixFilePermissions;
+import java.util.EnumSet;
+import java.util.Set;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -64,7 +71,7 @@ public class FramesExtractor implements VideoFrameExtractorPort {
                 throw new IOException("Video data stream is null");
             }
             loggerPort.debug("[FramesExtractor][extractFramesAsZip] Creating temporary video file");
-            final File tempVideo = File.createTempFile("streaming_extract_", ".mp4");
+            final File tempVideo = createSecureTempFile("streaming_extract_", ".mp4");
             try (FileOutputStream fos = new FileOutputStream(tempVideo)) {
                 rawVideoData.transferTo(fos);
             }
@@ -73,7 +80,7 @@ public class FramesExtractor implements VideoFrameExtractorPort {
             final PipedOutputStream pos = new PipedOutputStream();
             final PipedInputStream pis = new PipedInputStream(pos, BUFFER_SIZE);
 
-            final Thread worker = new Thread(() -> extractFramesInBackground(tempVideo, pos, entryNamePrefix),
+            final Thread worker = new Thread(() -> extractFramesInBackground(tempVideo, pos),
                     THREAD_NAME_PREFIX + "-" + System.currentTimeMillis());
 
             worker.setDaemon(true);
@@ -88,7 +95,7 @@ public class FramesExtractor implements VideoFrameExtractorPort {
         }
     }
 
-    private void extractFramesInBackground(File tempVideo, PipedOutputStream pos, String entryNamePrefix) {
+    private void extractFramesInBackground(File tempVideo, PipedOutputStream pos) {
         SeekableByteChannel ch = null;
         ZipOutputStream zos = null;
 
@@ -127,7 +134,7 @@ public class FramesExtractor implements VideoFrameExtractorPort {
         }
     }
 
-    private int getTotalFramesFromVideo(FrameGrab grab) throws JCodecException {
+    private int getTotalFramesFromVideo(FrameGrab grab) {
         loggerPort.debug("[FramesExtractor][getTotalFramesFromVideo] Retrieving total frame count from metadata");
         final int totalFrames = grab.getVideoTrack().getMeta().getTotalFrames();
 
@@ -244,6 +251,58 @@ public class FramesExtractor implements VideoFrameExtractorPort {
         }
     }
 
+    /**
+     * Creates a temporary file with secure permissions (read/write for owner only).
+     * Uses Java NIO Files API to ensure proper file permissions on Unix-like systems.
+     *
+     * @param prefix the prefix for the temp file name
+     * @param suffix the suffix for the temp file name
+     * @return a File object representing the securely created temporary file
+     * @throws IOException if the temporary file cannot be created
+     */
+    private File createSecureTempFile(String prefix, String suffix) throws IOException {
+        try {
+            final Set<PosixFilePermission> permissions = EnumSet.of(
+                    PosixFilePermission.OWNER_READ,
+                    PosixFilePermission.OWNER_WRITE
+            );
+            final FileAttribute<Set<PosixFilePermission>> attrs = PosixFilePermissions.asFileAttribute(permissions);
+
+            final Path tempPath = Files.createTempFile(prefix, suffix, attrs);
+            loggerPort.debug("[FramesExtractor][createSecureTempFile] Secure temp file created with restricted permissions, path={}", tempPath);
+            return tempPath.toFile();
+        } catch (UnsupportedOperationException e) {
+            // POSIX permissions not supported (e.g., on Windows or certain filesystems)
+            loggerPort.debug("[FramesExtractor][createSecureTempFile] POSIX permissions not supported, using default temp file creation");
+            final Path tempPath = Files.createTempFile(prefix, suffix);
+            final File tempFile = tempPath.toFile();
+
+            // On Windows, set file to be readable/writable by owner only via file permissions
+            try {
+                if (!tempFile.setReadable(false, false)) { // Remove all other permissions
+                    loggerPort.debug("[FramesExtractor][createSecureTempFile] Could not remove readable permission");
+                }
+                if (!tempFile.setWritable(false, false)) {
+                    loggerPort.debug("[FramesExtractor][createSecureTempFile] Could not remove writable permission");
+                }
+                if (!tempFile.setExecutable(false, false)) {
+                    loggerPort.debug("[FramesExtractor][createSecureTempFile] Could not remove executable permission");
+                }
+                if (!tempFile.setReadable(true, true)) {  // Add owner read
+                    loggerPort.debug("[FramesExtractor][createSecureTempFile] Could not set owner readable permission");
+                }
+                if (!tempFile.setWritable(true, true)) {  // Add owner write
+                    loggerPort.debug("[FramesExtractor][createSecureTempFile] Could not set owner writable permission");
+                }
+                loggerPort.debug("[FramesExtractor][createSecureTempFile] Applied file permissions for Windows, path={}", tempFile);
+            } catch (SecurityException se) {
+                loggerPort.warn("[FramesExtractor][createSecureTempFile] Could not set file permissions, error={}", se.getMessage());
+            }
+
+            return tempFile;
+        }
+    }
+
     private void deleteTempFile(File tempFile) {
         try {
             if (tempFile != null && tempFile.exists()) {
@@ -263,25 +322,26 @@ public class FramesExtractor implements VideoFrameExtractorPort {
             File tempVideo,
             int totalFrames,
             ZipOutputStream zos
-    )
-            throws JCodecException, IOException {
+    ) {
 
         final BlockingQueue<Object> frameQueue = new LinkedBlockingQueue<>(queueCapacity);
         final ExecutorService executorService = Executors.newFixedThreadPool(threadPoolSize,
                 r -> new Thread(r, THREAD_NAME_PREFIX + "-worker-" + System.currentTimeMillis()));
 
-        final int frameInterval = FPS; // One frame every 2 seconds (50% sampling)
-        final int totalFramesToExtract = (totalFrames + frameInterval - 1) / frameInterval;
+        final int totalFramesToExtract = (totalFrames + FPS - 1) / FPS;
 
         loggerPort.info(
                 "[FramesExtractor][extractFramesWithMultiThread] Starting multi-thread extraction with {} threads, "
                         + "totalFramesToExtract={}, samplingRate=50%(1frame/2sec)",
                 threadPoolSize, totalFramesToExtract);
 
+        // Wrap ZipOutputStream with its own lock
+        final ZipStreamWithLock zipStreamWithLock = new ZipStreamWithLock(zos);
+
         // Start ZIP writer thread
         final Thread zipWriterThread = new Thread(() -> {
             try {
-                writeFramesToZip(frameQueue, zos);
+                writeFramesToZip(frameQueue, zipStreamWithLock);
             } catch (IOException e) {
                 loggerPort.error("[FramesExtractor][zipWriterThread] Error writing frames to ZIP, error={}", e.getMessage());
             }
@@ -289,7 +349,7 @@ public class FramesExtractor implements VideoFrameExtractorPort {
         zipWriterThread.start();
 
         // Submit frame extraction tasks
-        submitFrameExtractionTasks(tempVideo, totalFrames, frameQueue, frameInterval);
+        submitFrameExtractionTasks(tempVideo, totalFrames, frameQueue);
 
         // Wait for all tasks to complete
         shutdownExecutorService(executorService);
@@ -303,33 +363,33 @@ public class FramesExtractor implements VideoFrameExtractorPort {
         loggerPort.info("[FramesExtractor][extractFramesWithMultiThread] Multi-thread extraction completed successfully");
     }
 
-    private void submitFrameExtractionTasks(File tempVideo, int totalFrames, BlockingQueue<Object> frameQueue, int frameInterval) {
+    private void submitFrameExtractionTasks(File tempVideo, int totalFrames, BlockingQueue<Object> frameQueue) {
         int frameIndex = 0;
-        for (int frameNumber = 0; frameNumber < totalFrames; frameNumber += frameInterval) {
-            final int currentFrameNumber = frameNumber;
+        for (int frameNumber = 0; frameNumber < totalFrames; frameNumber += FPS) {
             final int currentFrameIndex = frameIndex;
 
-            // Inline executor submission with proper exception handling
             try {
-                final ExtractedFrame frame = extractFrameTask(tempVideo, currentFrameNumber, currentFrameIndex);
+                final ExtractedFrame frame = extractFrameTask(tempVideo, frameNumber, currentFrameIndex);
                 frameQueue.put(frame);
             } catch (InterruptedException e) {
                 loggerPort.error("[FramesExtractor][submitFrameExtractionTasks] Interrupted while queuing frame {}, error={}",
-                        currentFrameNumber, e.getMessage());
+                        frameNumber, e.getMessage());
                 try {
-                    frameQueue.put(new ExtractedFrame(currentFrameIndex, e));
+                    frameQueue.put(new ExtractedFrame(currentFrameIndex));
                 } catch (InterruptedException ie) {
                     loggerPort.error("[FramesExtractor][submitFrameExtractionTasks] Interrupted while queuing error, error={}",
                             ie.getMessage());
                 }
+                Thread.currentThread().interrupt();
             } catch (IOException | JCodecException e) {
                 loggerPort.error("[FramesExtractor][submitFrameExtractionTasks] Error extracting frame {}, error={}",
-                        currentFrameNumber, e.getMessage());
+                        frameNumber, e.getMessage());
                 try {
-                    frameQueue.put(new ExtractedFrame(currentFrameIndex, e));
+                    frameQueue.put(new ExtractedFrame(currentFrameIndex));
                 } catch (InterruptedException ie) {
                     loggerPort.error("[FramesExtractor][submitFrameExtractionTasks] Interrupted while queuing error, error={}",
                             ie.getMessage());
+                    Thread.currentThread().interrupt();
                 }
             }
             frameIndex++;
@@ -396,7 +456,7 @@ public class FramesExtractor implements VideoFrameExtractorPort {
         } catch (IOException | JCodecException e) {
             loggerPort.error("[FramesExtractor][extractFrameTask] {} Exception extracting frame {}, error={}",
                     getThreadInfo(), frameNumber, e.getMessage());
-            return new ExtractedFrame(frameIndex, e);
+            return new ExtractedFrame(frameIndex);
         } finally {
             if (ch != null) {
                 try {
@@ -411,39 +471,33 @@ public class FramesExtractor implements VideoFrameExtractorPort {
         }
     }
 
-    private void writeFramesToZip(BlockingQueue<Object> frameQueue, ZipOutputStream zos) throws IOException {
+    private void writeFramesToZip(BlockingQueue<Object> frameQueue, ZipStreamWithLock zipStreamWithLock) throws IOException {
         try {
             loggerPort.debug("[FramesExtractor][writeFramesToZip] {} Started ZIP writer thread", getThreadInfo());
-            while (true) {
+            boolean running = true;
+            while (running) {
                 final Object frame = frameQueue.take();
 
                 if (frame == POISON_PILL) {
                     loggerPort.debug("[FramesExtractor][writeFramesToZip] {} Received poison pill, terminating ZIP writer", getThreadInfo());
-                    break;
-                }
-
-                if (!(frame instanceof ExtractedFrame extractedFrame)) {
+                    running = false;
+                } else if (frame instanceof ExtractedFrame extractedFrame) {
+                    if (!extractedFrame.isError()) {
+                        final BufferedImage image = extractedFrame.getImage();
+                        if (image != null) {
+                            loggerPort.debug("[FramesExtractor][writeFramesToZip] {} Writing frame {} to ZIP",
+                                    getThreadInfo(), extractedFrame.getFrameIndex());
+                            zipStreamWithLock.writeFrameToZip(image, extractedFrame.getFrameIndex(), this::writeFrameToZip);
+                        } else {
+                            loggerPort.warn("[FramesExtractor][writeFramesToZip] {} Frame {} has null image",
+                                    getThreadInfo(), extractedFrame.getFrameIndex());
+                        }
+                    } else {
+                        loggerPort.warn("[FramesExtractor][writeFramesToZip] {} Skipping frame {} due to extraction error",
+                                getThreadInfo(), extractedFrame.getFrameIndex());
+                    }
+                } else {
                     loggerPort.warn("[FramesExtractor][writeFramesToZip] {} Unexpected object type in queue", getThreadInfo());
-                    continue;
-                }
-
-                if (extractedFrame.isError()) {
-                    loggerPort.warn("[FramesExtractor][writeFramesToZip] {} Skipping frame {} due to extraction error",
-                            getThreadInfo(), extractedFrame.getFrameIndex());
-                    continue;
-                }
-
-                final BufferedImage image = extractedFrame.getImage();
-                if (image == null) {
-                    loggerPort.warn("[FramesExtractor][writeFramesToZip] {} Frame {} has null image",
-                            getThreadInfo(), extractedFrame.getFrameIndex());
-                    continue;
-                }
-
-                synchronized (zos) {
-                    loggerPort.debug("[FramesExtractor][writeFramesToZip] {} Writing frame {} to ZIP",
-                            getThreadInfo(), extractedFrame.getFrameIndex());
-                    writeFrameToZip(image, zos, extractedFrame.getFrameIndex());
                 }
             }
         } catch (InterruptedException e) {
@@ -454,6 +508,14 @@ public class FramesExtractor implements VideoFrameExtractorPort {
 
     private String getThreadInfo() {
         return "[Thread: " + Thread.currentThread().getName() + "]";
+    }
+
+    /**
+     * Functional interface for writing a frame to ZIP.
+     */
+    @FunctionalInterface
+    private interface ZipFrameWriter {
+        void write(BufferedImage image, ZipOutputStream zos, int frameIndex) throws IOException;
     }
 
     /**
@@ -470,14 +532,14 @@ public class FramesExtractor implements VideoFrameExtractorPort {
             this.isError = false;
         }
 
-        ExtractedFrame(int frameIndex, Throwable error) {
+        ExtractedFrame(int frameIndex) {
             this.frameIndex = frameIndex;
             this.image = null;
             this.isError = true;
         }
 
         static ExtractedFrame empty(int frameIndex) {
-            return new ExtractedFrame(frameIndex, (BufferedImage) null);
+            return new ExtractedFrame(frameIndex, null);
         }
 
         int getFrameIndex() {
@@ -490,6 +552,29 @@ public class FramesExtractor implements VideoFrameExtractorPort {
 
         boolean isError() {
             return isError;
+        }
+    }
+
+    /**
+     * Wrapper class for ZipOutputStream that provides synchronized access via a dedicated lock object.
+     * This avoids synchronizing directly on method parameters.
+     */
+    private static class ZipStreamWithLock {
+        private final ZipOutputStream zos;
+        private final Object lock = new Object();
+
+        ZipStreamWithLock(ZipOutputStream zos) {
+            this.zos = zos;
+        }
+
+        void writeFrameToZip(BufferedImage image, int frameIndex, ZipFrameWriter writer) throws IOException {
+            synchronized (lock) {
+                writer.write(image, zos, frameIndex);
+            }
+        }
+
+        ZipOutputStream getZipOutputStream() {
+            return zos;
         }
     }
 }
