@@ -253,6 +253,32 @@
                     </execution>
                 </executions>
                 <configuration>
+                    <excludes>
+                        <!-- Application main class -->
+                        <exclude>**/ProcessVideoApplication.class</exclude>
+                        
+                        <!-- Configuration classes -->
+                        <exclude>**/config/**</exclude>
+                        <exclude>**/*Config.class</exclude>
+                        <exclude>**/*Configuration.class</exclude>
+                        
+                        <!-- DTOs and Models (simple data classes) -->
+                        <exclude>**/domain/model/**</exclude>
+                        <exclude>**/dto/**</exclude>
+                        <exclude>**/*DTO.class</exclude>
+                        <exclude>**/*Request.class</exclude>
+                        <exclude>**/*Response.class</exclude>
+                        
+                        <!-- Custom Exceptions -->
+                        <exclude>**/exception/**</exclude>
+                        <exclude>**/*Exception.class</exclude>
+                        
+                        <!-- Generated classes -->
+                        <exclude>**/generated/**</exclude>
+                        
+                        <!-- Constants classes -->
+                        <exclude>**/*Constants.class</exclude>
+                    </excludes>
                     <rules>
                         <rule>
                             <element>BUNDLE</element>

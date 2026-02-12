@@ -28,7 +28,6 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-
 @ExtendWith(MockitoExtension.class)
 class ConsumerVideoQueueTest {
 
@@ -91,10 +90,106 @@ class ConsumerVideoQueueTest {
 
         // Assert
         verify(processVideoUseCase, times(1)).execute("unique_video.mp4", "my-bucket");
-        verify(loggerPort, atLeastOnce()).warn(contains("Event already processed"), any(), any(), any(), eq("unique_video.mp4"));
+        verify(loggerPort, atLeastOnce()).warn(contains("Event already processed"), any(), any(), any(),
+                eq("unique_video.mp4"));
     }
 
-    // ...existing code...
+    @Test
+    @DisplayName("Should handle NullPointerException during message processing")
+    void consumeMessage_NullPointerException() {
+        // Arrange
+        when(jsonConverter.toEventVideo(anyString())).thenThrow(new NullPointerException("Null value encountered"));
+
+        // Act
+        consumerVideoQueue.consumeMessage(payload);
+
+        // Assert
+        org.mockito.ArgumentCaptor<String> msgCaptor = org.mockito.ArgumentCaptor.forClass(String.class);
+        org.mockito.ArgumentCaptor<Object> arg1 = org.mockito.ArgumentCaptor.forClass(Object.class);
+        org.mockito.ArgumentCaptor<Object> arg2 = org.mockito.ArgumentCaptor.forClass(Object.class);
+        org.mockito.ArgumentCaptor<Object> arg3 = org.mockito.ArgumentCaptor.forClass(Object.class);
+        org.mockito.ArgumentCaptor<Object> arg4 = org.mockito.ArgumentCaptor.forClass(Object.class);
+
+        // Verify error was called with String and 4 arguments
+        verify(loggerPort, atLeastOnce()).error(msgCaptor.capture(), arg1.capture(), arg2.capture(), arg3.capture(), arg4.capture());
+        
+        // Check message contains expected text
+        org.junit.jupiter.api.Assertions.assertTrue(msgCaptor.getValue().contains("Null pointer error processing message"));
+        
+        verify(processVideoUseCase, never()).execute(anyString(), anyString());
+    }
+
+    @Test
+    @DisplayName("Should handle IllegalArgumentException during message processing")
+    void consumeMessage_IllegalArgumentException() {
+        // Arrange
+        when(jsonConverter.toEventVideo(anyString())).thenThrow(new IllegalArgumentException("Invalid payload format"));
+
+        // Act
+        consumerVideoQueue.consumeMessage(payload);
+
+        // Assert
+        org.mockito.ArgumentCaptor<String> msgCaptor = org.mockito.ArgumentCaptor.forClass(String.class);
+        org.mockito.ArgumentCaptor<Object> arg1 = org.mockito.ArgumentCaptor.forClass(Object.class);
+        org.mockito.ArgumentCaptor<Object> arg2 = org.mockito.ArgumentCaptor.forClass(Object.class);
+        org.mockito.ArgumentCaptor<Object> arg3 = org.mockito.ArgumentCaptor.forClass(Object.class);
+        org.mockito.ArgumentCaptor<Object> arg4 = org.mockito.ArgumentCaptor.forClass(Object.class);
+
+        verify(loggerPort, atLeastOnce()).error(msgCaptor.capture(), arg1.capture(), arg2.capture(), arg3.capture(), arg4.capture());
+        
+        org.junit.jupiter.api.Assertions.assertTrue(msgCaptor.getValue().contains("Invalid argument error processing message"));
+        
+        verify(processVideoUseCase, never()).execute(anyString(), anyString());
+    }
+
+    @Test
+    @DisplayName("Should handle null notification from JSON converter")
+    void consumeMessage_NullNotification() {
+        // Arrange
+        when(jsonConverter.toEventVideo(payload)).thenReturn(null);
+
+        // Act
+        consumerVideoQueue.consumeMessage(payload);
+
+        // Assert
+        verify(loggerPort).warn(contains("Notification is null"), any(), any(), any());
+        verify(processVideoUseCase, never()).execute(anyString(), anyString());
+    }
+
+    @Test
+    @DisplayName("Should handle empty or null records in notification")
+    void consumeMessage_EmptyRecords() {
+        // Arrange
+        var notification = mock(S3EventNotification.class);
+        when(jsonConverter.toEventVideo(payload)).thenReturn(notification);
+        when(notification.getRecords()).thenReturn(List.of()); // Empty list
+
+        // Act
+        consumerVideoQueue.consumeMessage(payload);
+
+        // Assert
+        verify(loggerPort).warn(contains("No records found in S3 event notification"), any(), any(), any());
+        verify(processVideoUseCase, never()).execute(anyString(), anyString());
+    }
+
+    @Test
+    @DisplayName("Should handle null S3 data in event record")
+    void consumeMessage_NullS3Data() {
+        // Arrange
+        var eventRecord = mock(S3EventRecord.class);
+        var notification = mock(S3EventNotification.class);
+
+        when(jsonConverter.toEventVideo(payload)).thenReturn(notification);
+        when(notification.getRecords()).thenReturn(List.of(eventRecord));
+        when(eventRecord.getS3()).thenReturn(null); // Null S3 data
+
+        // Act
+        consumerVideoQueue.consumeMessage(payload);
+
+        // Assert
+        verify(loggerPort).warn(contains("S3 record or S3 data is null"), any(), any(), any());
+        verify(processVideoUseCase, never()).execute(anyString(), anyString());
+    }
 
     // Helper method to build the complex S3 Event structure
     private S3EventNotification createMockS3Event(String key) {
