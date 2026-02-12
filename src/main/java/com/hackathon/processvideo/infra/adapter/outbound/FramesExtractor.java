@@ -51,6 +51,7 @@ public class FramesExtractor implements VideoFrameExtractorPort {
     private static final int QUALITY_SCALE = 100; // Scale factor for quality conversion
     private static final int TERMINATION_TIMEOUT_MINUTES = 10;
     private static final Object POISON_PILL = new Object(); // Sentinel value to signal queue end
+    private static final String SECURE_TEMP_DIR_PROPERTY = "app.temp.dir";
 
     private final LoggerPort loggerPort;
     private final int threadPoolSize;
@@ -254,6 +255,7 @@ public class FramesExtractor implements VideoFrameExtractorPort {
     /**
      * Creates a temporary file with secure permissions (read/write for owner only).
      * Uses Java NIO Files API to ensure proper file permissions on Unix-like systems.
+     * Attempts to use an app-specific secure temp directory if configured.
      *
      * @param prefix the prefix for the temp file name
      * @param suffix the suffix for the temp file name
@@ -261,6 +263,9 @@ public class FramesExtractor implements VideoFrameExtractorPort {
      * @throws IOException if the temporary file cannot be created
      */
     private File createSecureTempFile(String prefix, String suffix) throws IOException {
+        // Attempt to use app-specific secure temp directory
+        Path tempDir = getSecureTempDirectory();
+
         try {
             final Set<PosixFilePermission> permissions = EnumSet.of(
                     PosixFilePermission.OWNER_READ,
@@ -268,13 +273,13 @@ public class FramesExtractor implements VideoFrameExtractorPort {
             );
             final FileAttribute<Set<PosixFilePermission>> attrs = PosixFilePermissions.asFileAttribute(permissions);
 
-            final Path tempPath = Files.createTempFile(prefix, suffix, attrs);
+            final Path tempPath = Files.createTempFile(tempDir, prefix, suffix, attrs);
             loggerPort.debug("[FramesExtractor][createSecureTempFile] Secure temp file created with restricted permissions, path={}", tempPath);
             return tempPath.toFile();
         } catch (UnsupportedOperationException e) {
             // POSIX permissions not supported (e.g., on Windows or certain filesystems)
-            loggerPort.debug("[FramesExtractor][createSecureTempFile] POSIX permissions not supported, using default temp file creation");
-            final Path tempPath = Files.createTempFile(prefix, suffix);
+            loggerPort.debug("[FramesExtractor][createSecureTempFile] POSIX permissions not supported, using fallback permission method");
+            final Path tempPath = Files.createTempFile(tempDir, prefix, suffix);
             final File tempFile = tempPath.toFile();
 
             // On Windows, set file to be readable/writable by owner only via file permissions
@@ -301,6 +306,51 @@ public class FramesExtractor implements VideoFrameExtractorPort {
 
             return tempFile;
         }
+    }
+
+    /**
+     * Gets or creates a secure temporary directory with restricted permissions.
+     * Uses app.temp.dir system property if configured, otherwise uses system temp.
+     *
+     * @return Path to the secure temp directory
+     * @throws IOException if the directory cannot be created
+     */
+    private Path getSecureTempDirectory() throws IOException {
+        String customTempDir = System.getProperty(SECURE_TEMP_DIR_PROPERTY);
+
+        if (customTempDir != null && !customTempDir.trim().isEmpty()) {
+            Path dirPath = Path.of(customTempDir);
+            if (!Files.exists(dirPath)) {
+                try {
+                    final Set<PosixFilePermission> dirPermissions = EnumSet.of(
+                            PosixFilePermission.OWNER_READ,
+                            PosixFilePermission.OWNER_WRITE,
+                            PosixFilePermission.OWNER_EXECUTE
+                    );
+                    final FileAttribute<Set<PosixFilePermission>> attrs = PosixFilePermissions.asFileAttribute(dirPermissions);
+                    Files.createDirectories(dirPath, attrs);
+                    loggerPort.debug("[FramesExtractor][getSecureTempDirectory] Created secure temp directory, path={}", dirPath);
+                } catch (UnsupportedOperationException e) {
+                    // POSIX not supported, create normally and set permissions
+                    Files.createDirectories(dirPath);
+                    try {
+                        dirPath.toFile().setReadable(false, false);
+                        dirPath.toFile().setWritable(false, false);
+                        dirPath.toFile().setExecutable(false, false);
+                        dirPath.toFile().setReadable(true, true);
+                        dirPath.toFile().setWritable(true, true);
+                        dirPath.toFile().setExecutable(true, true);
+                        loggerPort.debug("[FramesExtractor][getSecureTempDirectory] Applied directory permissions for Windows");
+                    } catch (SecurityException se) {
+                        loggerPort.warn("[FramesExtractor][getSecureTempDirectory] Could not set directory permissions, error={}", se.getMessage());
+                    }
+                }
+            }
+            return dirPath;
+        }
+
+        // Fall back to system temp directory
+        return Path.of(System.getProperty("java.io.tmpdir"));
     }
 
     private void deleteTempFile(File tempFile) {
