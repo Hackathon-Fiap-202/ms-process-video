@@ -56,13 +56,13 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: |
           mvn clean verify org.sonarsource.scanner.maven:sonar-maven-plugin:sonar \
-          -Dsonar.projectKey=Grupo-202-FIAP_process-video \
-          -Dsonar.organization=grupo-202-fiap \
+          -Dsonar.projectKey=Hackathon-Fiap-202_ms-process-video \
+          -Dsonar.organization=hackathon-fiap-202 \
           -Dsonar.host.url=https://sonarcloud.io
 
       - name: Derrubar containers de teste
         run: docker compose down -v
-        
+
       # --- FIM: BLOCO DE TESTES DE INTEGRAÇÃO ---
 
       - name: Configure AWS credentials (OIDC)
