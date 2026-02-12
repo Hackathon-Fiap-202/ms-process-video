@@ -1,8 +1,24 @@
 # Process Video Microservice
 
-This microservice processes video files uploaded to an AWS S3 bucket. It extracts frames from the video, compresses them into a ZIP archive, and uploads the result to an output bucket. The service also sends status updates via AWS SQS throughout the process.
+A cloud-native microservice for automated video processing, built with clean architecture principles and AWS
+infrastructure.
 
-## Table of Contents
+## Overview
+
+This microservice provides asynchronous video processing capabilities through event-driven architecture. It
+automatically extracts frames from uploaded videos, packages them efficiently, and manages the complete lifecycle
+through distributed messaging patterns.
+
+**Key Features:**
+
+- **Event-Driven Architecture:** Asynchronous processing with message-based coordination
+- **Cloud-Native Design:** Scalable, resilient infrastructure leveraging AWS services
+- **Clean Architecture:** Separation of concerns through hexagonal pattern
+- **Developer Experience:** Local development environment with cloud service emulation
+- **Production Ready:** Automated deployment pipelines and infrastructure provisioning
+
+## 📋 Table of Contents
+
 - [Architecture](#architecture)
 - [Technologies](#technologies)
 - [Prerequisites](#prerequisites)
@@ -11,113 +27,138 @@ This microservice processes video files uploaded to an AWS S3 bucket. It extract
 - [Usage](#usage)
 - [Testing](#testing)
 
-## Architecture
+## 🏗️ Architecture
 
-The project follows the **Hexagonal Architecture (Ports and Adapters)** pattern to ensure separation of concerns and testability.
+The project implements **Hexagonal Architecture (Ports and Adapters)** to ensure separation of concerns, testability,
+and independence from external frameworks.
 
-- **Application:** Contains the application logic, input/output ports.
-- **Domain:** Contains the core business logic (e.g., `VideoProcessorService`) and domain models.
-- **Infra:** Contains adapters for external systems (AWS S3, SQS, LocalStack, etc.) and configuration.
+```
+├── Application    → Use cases and orchestration logic
+├── Domain        → Core business rules and models
+└── Infrastructure → External system integrations
+```
 
-## Technologies
+**Processing Flow:**
 
-- **Java 21**
-- **Spring Boot 3** (Web, Actuator, Validation)
-- **Spring Cloud AWS** (S3, SQS)
-- **JCodec** (Video processing)
-- **Docker & Docker Compose**
-- **LocalStack** (AWS mocking for local development)
-- **Terraform** (Infrastructure as Code)
+1. Upload triggers processing workflow
+2. Service orchestrates frame extraction pipeline
+3. Results are packaged and stored
+4. Lifecycle events are published for monitoring
+5. Cleanup operations complete the workflow
 
-## Prerequisites
+## 🛠️ Technologies
+
+- **Java 21** - Modern JVM platform
+- **Spring Boot 3** - Application framework with cloud integrations
+- **Spring Cloud AWS** - Native cloud service bindings
+- **JCodec** - Media processing capabilities
+- **Docker & Docker Compose** - Container orchestration
+- **LocalStack** - Local cloud environment
+- **Terraform** - Infrastructure as Code
+- **GitHub Actions** - CI/CD automation
+- **SonarCloud** - Code quality analysis
+
+## 📦 Prerequisites
 
 - [Java 21](https://www.oracle.com/java/technologies/downloads/#java21)
-- [Maven](https://maven.apache.org/download.cgi)
-- [Docker](https://www.docker.com/products/docker-desktop)
+- [Maven 3.8+](https://maven.apache.org/download.cgi)
+- [Docker](https://www.docker.com/products/docker-desktop) and Docker Compose
 
-## Getting Started
+## 🚀 Getting Started
 
-1.  **Clone the repository:**
-    ```bash
-    git clone https://github.com/your-repo/process-video.git
-    cd process-video
-    ```
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/your-repo/process-video.git
+   cd process-video
+   ```
 
-2.  **Build the project:**
-    ```bash
-    mvn clean install
-    ```
+2. **Build the project:**
+   ```bash
+   mvn clean install
+   ```
 
-3.  **Run with Docker Compose:**
-    This command starts the application and a LocalStack container with the necessary AWS resources (S3 buckets, SQS queues).
+3. **Run with Docker Compose:**
+   ```bash
+   docker-compose up -d
+   ```
 
-    ```bash
-    docker-compose up -d
-    ```
+    - Application: `http://localhost:8080`
+    - Local Cloud Services: `http://localhost:4566`
+    - Health Check: `http://localhost:8080/actuator/health`
 
-    The application will be available at `http://localhost:8080`.
-    LocalStack will be available at `http://localhost:4566`.
+## ⚙️ Configuration
 
-## Configuration
+### Environment Variables
 
-### Environment Variables (Local & Docker)
-Key environment variables can be configured in `docker-compose.yml` or your `.env` file:
+Configure runtime behavior through environment variables:
 
 | Variable | Description | Default |
 | :--- | :--- | :--- |
-| `AWS_REGION` | AWS Region | `us-east-1` |
-| `APP_BUCKETS_VIDEO_INPUT_STORAGE` | S3 Bucket for input videos | `video-input-storage` |
-| `APP_BUCKETS_VIDEO_PROCESSED_STORAGE` | S3 Bucket for processed ZIPs | `video-processed-storage` |
-| `SQS_VIDEO_PROCESS_COMMAND_URL` | SQS Queue URL for processing commands | (LocalStack URL) |
-| `SQS_VIDEO_UPDATED_EVENT_URL` | SQS Queue URL for status updates | (LocalStack URL) |
+| `AWS_REGION` | Cloud region | `us-east-1` |
+| `APP_BUCKETS_VIDEO_INPUT_STORAGE` | Input storage location | `video-input-storage` |
+| `APP_BUCKETS_VIDEO_PROCESSED_STORAGE` | Output storage location | `video-processed-storage` |
+| `SQS_VIDEO_PROCESS_COMMAND_URL` | Command queue endpoint | (Local URL) |
+| `SQS_VIDEO_UPDATED_EVENT_URL` | Event queue endpoint | (Local URL) |
 
-### AWS SSM Parameter Store
-For the application and infrastructure to function correctly in production (and for the GitHub Actions workflow), the following parameters must be created in AWS Systems Manager Parameter Store:
+### Cloud Parameter Store
 
-| Parameter Name | Description | Example Value |
-| :--- | :--- | :--- |
-| `/process-video/terraform/aws-account-id` | AWS Account ID used by Terraform | `123456789012` |
-| `/process-video/aws/access-key-id` | AWS Access Key ID for the application | `AKIA...` |
-| `/process-video/aws/secret-access-key` | AWS Secret Access Key for the application | `Secret...` |
-| `/process-video/sqs/video-process-command-queue-name` | Name of the process command queue | `video-process-command` |
-| `/process-video/sqs/video-updated-event-queue-name` | Name of the status update queue | `video-updated-event` |
+Production deployments require these parameters in AWS Systems Manager:
 
-> **Note:** The application requires `SQS_VIDEO_PROCESS_COMMAND_URL` and `SQS_VIDEO_UPDATED_EVENT_URL` environment variables. Ensure your deployment configuration (ExternalSecrets/ConfigMap) correctly maps these, or that your application can resolve URLs from the queue names provided in SSM.
+| Parameter Name | Description |
+| :--- | :--- |
+| `/process-video/terraform/aws-account-id` | Cloud account identifier |
+| `/process-video/aws/access-key-id` | Service credentials |
+| `/process-video/aws/secret-access-key` | Service credentials |
+| `/process-video/sqs/video-process-command-queue-name` | Command queue identifier |
+| `/process-video/sqs/video-updated-event-queue-name` | Event queue identifier |
 
-### GitHub Actions Workflows
-To run the CI/CD pipelines (`.github/workflows`), you need to configure the following in your GitHub Repository settings:
+### CI/CD Configuration
 
-#### Secrets
+Configure deployment automation through repository secrets:
+
 | Secret Name | Description |
 | :--- | :--- |
-| `AWS_ACCOUNT_ID` | Your AWS Account ID. |
-| `SONAR_TOKEN` | Token for SonarCloud analysis. |
-| `GITHUB_TOKEN` | Automatically provided by GitHub, but ensure permissions are set. |
+| `AWS_ACCOUNT_ID` | Cloud account identifier |
+| `SONAR_TOKEN` | Code analysis credentials |
+| `GITHUB_TOKEN` | Automation token |
 
-#### Variables (or Env Vars in Workflow)
-The following are defined in `.github/workflows/cd-main.yml` but arguably should be repository variables if you need to change them:
-- `AWS_REGION` (default: `us-east-1`)
-- `CLUSTER_NAME` (default: `nextime-cluster`)
-- `ECR_REPOSITORY` (default: `process-video`)
+## 📖 Usage
 
-## Usage
+The service processes requests through asynchronous messaging:
 
-This service operates asynchronously based on SQS messages.
+1. **Submit a processing request** by uploading content to the input storage
+2. **Send a command message** with the resource identifier
+3. **The service orchestrates** the complete processing workflow
+4. **Monitor progress** through published lifecycle events
+5. **Retrieve results** from the output storage location
 
-1.  **Upload a video** to the input S3 bucket (`video-input-storage`).
-2.  **Send a message** to the processing queue (`video-process-command`) with the S3 key of the uploaded video.
-3.  The service will:
-    - Download the video.
-    - Extract frames.
-    - Create a ZIP file of the frames.
-    - Upload the ZIP to the output bucket (`video-processed-storage`).
-    - Delete the source video.
-    - Send status updates to the event queue (`video-updated-event`).
+Example command message structure:
 
-## Testing
+```json
+{
+  "videoKey": "resource-identifier",
+  "requestId": "correlation-id"
+}
+```
 
-To run the unit and integration tests:
+## 🧪 Testing
+
+Execute the test suite:
 
 ```bash
 mvn test
 ```
+
+Generate coverage reports:
+
+```bash
+mvn clean verify
+```
+
+The project includes comprehensive testing at multiple levels:
+
+- Unit tests for business logic
+- Integration tests with infrastructure
+- End-to-end workflow validation
+
+ 
