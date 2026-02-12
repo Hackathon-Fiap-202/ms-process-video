@@ -25,7 +25,7 @@ public class SqsVideoStatusUpdateAdapter implements VideoStatusUpdatePort {
             SqsClient sqsClient,
             LoggerPort loggerPort,
             ObjectMapper objectMapper,
-            @Value("${spring.cloud.aws.sqs.video-updated-event-url:http://localhost:4566/000000000000/video-updated-event}") String queueUrl
+            @Value("${app.sqs.video-updated-event-url:http://localhost:4566/000000000000/video-updated-event}") String queueUrl
     ) {
         this.sqsClient = sqsClient;
         this.loggerPort = loggerPort;
