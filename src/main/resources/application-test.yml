@@ -1,0 +1,10 @@
+spring:
+  cloud:
+    aws:
+      sqs:
+        enabled: false
+      region:
+        static: us-east-1
+      credentials:
+        access-key: noop
+        secret-key: noop

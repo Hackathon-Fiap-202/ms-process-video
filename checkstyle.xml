@@ -163,24 +163,6 @@
                      value="Interface type name ''{0}'' must match pattern ''{1}''."/>
         </module>
         <module name="NoFinalizer"/>
-        <!--        <module name="GenericWhitespace">-->
-        <!--            <message key="ws.followed"-->
-        <!--                     value="GenericWhitespace ''{0}'' is followed by whitespace."/>-->
-        <!--            <message key="ws.preceded"-->
-        <!--                     value="GenericWhitespace ''{0}'' is preceded with whitespace."/>-->
-        <!--            <message key="ws.illegalFollow"-->
-        <!--                     value="GenericWhitespace ''{0}'' should followed by whitespace."/>-->
-        <!--            <message key="ws.notPreceded"-->
-        <!--                     value="GenericWhitespace ''{0}'' is not preceded with whitespace."/>-->
-        <!--        </module>-->
-        <!--        <module name="Indentation">-->
-        <!--            <property name="basicOffset" value="4"/>-->
-        <!--            <property name="braceAdjustment" value="0"/>-->
-        <!--            <property name="caseIndent" value="0"/>-->
-        <!--            <property name="throwsIndent" value="8"/>-->
-        <!--            <property name="lineWrappingIndentation" value="8"/>-->
-        <!--            <property name="arrayInitIndent" value="4"/>-->
-        <!--        </module>-->
         <module name="AbbreviationAsWordInName">
             <property name="ignoreFinal" value="false"/>
             <property name="allowedAbbreviationLength" value="5"/>

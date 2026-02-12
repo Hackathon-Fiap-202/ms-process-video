@@ -15,7 +15,7 @@ import org.springframework.stereotype.Service;
 @Service
 public class VideoProcessorService implements ProcessVideoUseCase {
 
-    private static final long AVG_FRAME_SIZE_COMPRESSED = 50 * 1024;
+    private static final long AVG_FRAME_SIZE_COMPRESSED = 50L * 1024;
     private final FileServicePort fileServicePort;
     private final VideoFrameExtractorPort videoFrameExtractorPort;
     private final VideoStatusUpdatePort videoStatusUpdatePort;

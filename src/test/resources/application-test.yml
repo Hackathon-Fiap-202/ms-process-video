@@ -1,0 +1,23 @@
+spring:
+  cloud:
+    aws:
+      region:
+        static: us-east-1
+      s3:
+        endpoint: http://localhost:4566
+        path-style-access-enabled: true
+      sqs:
+        endpoint: http://localhost:4566
+      credentials:
+        access-key: test
+        secret-key: test
+
+app:
+  sqs:
+    video-process-command-url: http://localhost:4566/000000000000/video-process-command
+    video-updated-event-url: http://localhost:4566/000000000000/video-updated-event
+  frame-extraction:
+    thread-pool-size: 2
+    queue-capacity: 50
+
+

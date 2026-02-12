@@ -78,16 +78,16 @@ public class ConsumerVideoQueue {
             return;
         }
 
-        final var record = notification.getRecords().getFirst();
+        final var s3EventRecord = notification.getRecords().getFirst();
 
-        if (record == null || record.getS3() == null) {
+        if (s3EventRecord == null || s3EventRecord.getS3() == null) {
             loggerPort.warn(LOG_PREFIX_PROCESS + LOG_PREFIX_FORMAT + "S3 record or S3 data is null",
                     LOG_PREFIX_PROCESS, REPLICA_ID, Thread.currentThread().getName());
             return;
         }
 
-        final var bucketName = record.getS3().getBucket().getName();
-        final var keyName = record.getS3().getObject().getKey();
+        final var bucketName = s3EventRecord.getS3().getBucket().getName();
+        final var keyName = s3EventRecord.getS3().getObject().getKey();
 
         loggerPort.debug(LOG_PREFIX_PROCESS + LOG_PREFIX_FORMAT + "Deserialized S3 event, bucket={}, key={}",
                 LOG_PREFIX_PROCESS, REPLICA_ID, Thread.currentThread().getName(), bucketName, keyName);
