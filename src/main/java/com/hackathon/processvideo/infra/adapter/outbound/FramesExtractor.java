@@ -60,6 +60,9 @@ public class FramesExtractor implements VideoFrameExtractorPort {
     @Override
     public InputStream extractFramesAsZip(InputStream rawVideoData, String entryNamePrefix) {
         try {
+            if (rawVideoData == null) {
+                throw new IOException("Video data stream is null");
+            }
             loggerPort.debug("[FramesExtractor][extractFramesAsZip] Creating temporary video file");
             final File tempVideo = File.createTempFile("streaming_extract_", ".mp4");
             try (FileOutputStream fos = new FileOutputStream(tempVideo)) {
