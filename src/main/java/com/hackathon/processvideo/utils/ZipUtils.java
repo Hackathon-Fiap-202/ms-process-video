@@ -25,6 +25,8 @@ import java.util.zip.ZipOutputStream;
 public class ZipUtils {
 
     private static final Logger LOGGER = Logger.getLogger(ZipUtils.class.getName());
+    private static final String TEMP_FILE_PREFIX = "video_frames_";
+    private static final String TEMP_FILE_SUFFIX = ".zip";
 
     private ZipUtils() {
     }
@@ -32,7 +34,7 @@ public class ZipUtils {
     public static InputStream compressFiles(List<File> files) {
         File tempZip = null;
         try {
-            tempZip = createSecureTempFile("video_frames_", ".zip");
+            tempZip = createSecureTempFile();
 
             try (ZipOutputStream zos = new ZipOutputStream(new BufferedOutputStream(new FileOutputStream(tempZip)))) {
                 for (File file : files) {
@@ -70,7 +72,7 @@ public class ZipUtils {
     }
 
 
-    private static File createSecureTempFile(String prefix, String suffix) throws IOException {
+    private static File createSecureTempFile() throws IOException {
 
         final Path tempDir = getSecureTempDirectory();
 
@@ -81,13 +83,13 @@ public class ZipUtils {
             );
             final FileAttribute<Set<PosixFilePermission>> attrs = PosixFilePermissions.asFileAttribute(permissions);
 
-            final Path tempPath = Files.createTempFile(tempDir, prefix, suffix, attrs);
+            final Path tempPath = Files.createTempFile(tempDir, TEMP_FILE_PREFIX, TEMP_FILE_SUFFIX, attrs);
             LOGGER.log(Level.FINE, "Secure temp file created with restricted permissions, path={0}", tempPath);
             return tempPath.toFile();
         } catch (UnsupportedOperationException e) {
             // POSIX permissions not supported (e.g., on Windows or certain filesystems)
             LOGGER.log(Level.FINE, "POSIX permissions not supported, using fallback permission method");
-            final Path tempPath = Files.createTempFile(tempDir, prefix, suffix);
+            final Path tempPath = Files.createTempFile(tempDir, TEMP_FILE_PREFIX, TEMP_FILE_SUFFIX);
             final File tempFile = tempPath.toFile();
 
             try {
@@ -115,7 +117,7 @@ public class ZipUtils {
      */
     private static void applyFilePermissions(File file) throws SecurityException {
         // First, restrict all permissions
-        if (!file.setReadable(false, false)) { // Remove all other permissions
+        if (!file.setReadable(false, false)) {
             LOGGER.log(Level.FINE, "Could not remove readable permission");
         }
         if (!file.setWritable(false, false)) {
@@ -125,20 +127,14 @@ public class ZipUtils {
             LOGGER.log(Level.FINE, "Could not remove executable permission");
         }
         // Then, grant only owner permissions
-        if (!file.setReadable(true, true)) {  // Add owner read
+        if (!file.setReadable(true, true)) {
             LOGGER.log(Level.FINE, "Could not set owner readable permission");
         }
-        if (!file.setWritable(true, true)) {  // Add owner write
+        if (!file.setWritable(true, true)) {
             LOGGER.log(Level.FINE, "Could not set owner writable permission");
         }
     }
 
-    /**
-     * Applies restrictive directory permissions: removes all permissions except owner read/write/execute.
-     *
-     * @param directory the directory to apply permissions to
-     * @throws SecurityException if permissions cannot be set
-     */
     private static void applyDirectoryPermissions(File directory) throws SecurityException {
         if (!directory.setReadable(false, false)) {
             LOGGER.log(Level.FINE, "Could not remove readable permission");
@@ -160,14 +156,6 @@ public class ZipUtils {
         }
     }
 
-    /**
-     * Gets or creates a secure temporary directory with restricted permissions.
-     * Uses app.temp.dir system property if configured, otherwise creates a secure
-     * subdirectory within the system temp to avoid using publicly writable locations directly.
-     *
-     * @return Path to the secure temp directory
-     * @throws IOException if the directory cannot be created
-     */
     private static Path getSecureTempDirectory() throws IOException {
         final String customTempDir = System.getProperty("app.temp.dir");
 
