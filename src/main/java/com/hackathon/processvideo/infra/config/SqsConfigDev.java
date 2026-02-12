@@ -16,6 +16,12 @@ public class SqsConfigDev {
     @Value("${spring.cloud.aws.region.static:us-east-1}")
     private String region;
 
+    @Value("${spring.cloud.aws.credentials.access-key:default}")
+    private String accessKeyId;
+
+    @Value("${spring.cloud.aws.credentials.secret-key:default}")
+    private String secretAccessKey;
+
     @Bean
     public SqsClient sqsClientDev(
             @Value("${spring.cloud.aws.sqs.endpoint}") String endpoint
@@ -25,7 +31,7 @@ public class SqsConfigDev {
                 .endpointOverride(URI.create(endpoint))
                 .credentialsProvider(
                         StaticCredentialsProvider.create(
-                                AwsBasicCredentials.create("test", "test")
+                                AwsBasicCredentials.create(accessKeyId, secretAccessKey)
                         )
                 )
                 .build();
