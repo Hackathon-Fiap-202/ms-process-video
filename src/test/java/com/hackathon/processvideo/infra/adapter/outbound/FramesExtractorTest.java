@@ -32,11 +32,13 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class FramesExtractorTest {
     private FramesExtractor framesExtractor;
     private LoggerPort loggerPort;
+    private ManifestGenerator manifestGenerator;
 
     @BeforeEach
     void setUp() {
         loggerPort = mock(LoggerPort.class);
-        framesExtractor = new FramesExtractor(loggerPort, 2, 1);
+        manifestGenerator = mock(ManifestGenerator.class);
+        framesExtractor = new FramesExtractor(loggerPort, 2, 1, manifestGenerator);
     }
 
     private InputStream loadVideoFile() throws IOException {
@@ -129,20 +131,23 @@ class FramesExtractorGetTotalFramesTest {
     @Mock
     private LoggerPort loggerPort;
 
+    @Mock
+    private ManifestGenerator manifestGenerator;
+
     private FramesExtractor framesExtractor;
     private Method getTotalFramesFromVideoMethod;
 
-    @BeforeEach
-    void setUp() throws Exception {
-        framesExtractor = new FramesExtractor(loggerPort, 2, 1);
+     @BeforeEach
+     void setUp() throws Exception {
+         framesExtractor = new FramesExtractor(loggerPort, 2, 1, manifestGenerator);
 
-        // Use reflection to access the private method
-        getTotalFramesFromVideoMethod = FramesExtractor.class.getDeclaredMethod(
-                "getTotalFramesFromVideo",
-                FrameGrab.class
-        );
-        getTotalFramesFromVideoMethod.setAccessible(true);
-    }
+         // Use reflection to access the private method
+         getTotalFramesFromVideoMethod = FramesExtractor.class.getDeclaredMethod(
+                 "getTotalFramesFromVideo",
+                 FrameGrab.class
+         );
+         getTotalFramesFromVideoMethod.setAccessible(true);
+     }
 
     private FrameGrab createMockFrameGrab(int totalFrames, double totalDuration) {
         FrameGrab frameGrab = mock(FrameGrab.class);

@@ -56,13 +56,16 @@ public class FramesExtractor implements VideoFrameExtractorPort {
     private final LoggerPort loggerPort;
     private final int threadPoolSize;
     private final int queueCapacity;
+    private final ManifestGenerator manifestGenerator;
 
     public FramesExtractor(LoggerPort loggerPort,
                            @Value("${app.frame-extraction.thread-pool-size:4}") int threadPoolSize,
-                           @Value("${app.frame-extraction.queue-capacity:100}") int queueCapacity) {
+                           @Value("${app.frame-extraction.queue-capacity:100}") int queueCapacity,
+                           ManifestGenerator manifestGenerator) {
         this.loggerPort = loggerPort;
         this.threadPoolSize = threadPoolSize;
         this.queueCapacity = queueCapacity;
+        this.manifestGenerator = manifestGenerator;
     }
 
     @Override
@@ -81,7 +84,7 @@ public class FramesExtractor implements VideoFrameExtractorPort {
             final PipedOutputStream pos = new PipedOutputStream();
             final PipedInputStream pis = new PipedInputStream(pos, BUFFER_SIZE);
 
-            final Thread worker = new Thread(() -> extractFramesInBackground(tempVideo, pos),
+            final Thread worker = new Thread(() -> extractFramesInBackground(tempVideo, pos, entryNamePrefix),
                     THREAD_NAME_PREFIX + "-" + System.currentTimeMillis());
 
             worker.setDaemon(true);
@@ -96,7 +99,7 @@ public class FramesExtractor implements VideoFrameExtractorPort {
         }
     }
 
-    private void extractFramesInBackground(File tempVideo, PipedOutputStream pos) {
+    private void extractFramesInBackground(File tempVideo, PipedOutputStream pos, String videoKey) {
         try (SeekableByteChannel ch = NIOUtils.readableChannel(tempVideo);
              ZipOutputStream zos = new ZipOutputStream(pos)) {
             loggerPort.debug("[FramesExtractor][extractFramesInBackground] {} Opening video file channel", getThreadInfo());
@@ -116,6 +119,21 @@ public class FramesExtractor implements VideoFrameExtractorPort {
                             + "samplingRate=50%(1frame/2sec)",
                     getThreadInfo(), totalFrames, threadPoolSize, queueCapacity, IMAGE_FORMAT, JPG_QUALITY);
             extractFramesWithMultiThread(tempVideo, totalFrames, zos);
+
+            // Calculate extracted frame count (sampling rate is 50%)
+            final int extractedFrameCount = (totalFrames + FPS - 1) / FPS;
+
+            // Generate and write manifest.json to ZIP
+            try {
+                final String manifestJson = manifestGenerator.generateManifest(videoKey, extractedFrameCount);
+                final ZipEntry manifestEntry = new ZipEntry(manifestGenerator.getManifestFilename());
+                zos.putNextEntry(manifestEntry);
+                zos.write(manifestJson.getBytes());
+                zos.closeEntry();
+                loggerPort.info("[FramesExtractor][extractFramesInBackground] {} manifest.json written to ZIP, frameCount={}", getThreadInfo(), extractedFrameCount);
+            } catch (IOException e) {
+                loggerPort.warn("[FramesExtractor][extractFramesInBackground] {} Failed to write manifest.json, error={}", getThreadInfo(), e.getMessage());
+            }
 
             loggerPort.debug("[FramesExtractor][extractFramesInBackground] {} Finishing ZIP output stream", getThreadInfo());
             zos.finish();

@@ -40,11 +40,14 @@ class FramesExtractorPrivateMethodsTest {
         @Mock
         private LoggerPort loggerPort;
 
+        @Mock
+        private ManifestGenerator manifestGenerator;
+
         private FramesExtractor framesExtractor;
 
         @BeforeEach
         void setUp() {
-                framesExtractor = new FramesExtractor(loggerPort, 2, 10);
+                framesExtractor = new FramesExtractor(loggerPort, 2, 10, manifestGenerator);
         }
 
         @Test

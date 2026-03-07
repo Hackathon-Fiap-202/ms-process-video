@@ -98,7 +98,7 @@ public class VideoProcessorService implements ProcessVideoUseCase {
         final String nameWithoutExtension = filename.contains(".")
                 ? filename.substring(0, filename.lastIndexOf('.'))
                 : filename;
-        return "frames/" + nameWithoutExtension + ".zip";
+        return "end-process/" + nameWithoutExtension + ".zip";
     }
 
     private String extractPrefixFromKey(String keyName) {
