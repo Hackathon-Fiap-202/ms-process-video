@@ -21,10 +21,8 @@ resource "aws_iam_policy" "process_video_ssm" {
           "s3:ListBucket"
         ]
         Resource = [
-          "arn:aws:s3:::video-input-storage",
-          "arn:aws:s3:::video-input-storage/*",
-          "arn:aws:s3:::video-processed-storage",
-          "arn:aws:s3:::video-processed-storage/*"
+          "arn:aws:s3:::nextime-frame-video-storage",
+          "arn:aws:s3:::nextime-frame-video-storage/*"
         ]
       }
     ]
