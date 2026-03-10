@@ -509,10 +509,10 @@ class FramesExtractorPrivateMethodsTest {
                 PipedOutputStream pos = new PipedOutputStream();
 
                 Method method = FramesExtractor.class.getDeclaredMethod("extractFramesInBackground", File.class,
-                                PipedOutputStream.class);
+                                PipedOutputStream.class, String.class);
                 method.setAccessible(true);
 
-                assertDoesNotThrow(() -> method.invoke(framesExtractor, dummyFile, pos));
+                assertDoesNotThrow(() -> method.invoke(framesExtractor, dummyFile, pos, "test-key"));
 
                 // Verify error logging occurred
                 verify(loggerPort, atLeastOnce()).error(
