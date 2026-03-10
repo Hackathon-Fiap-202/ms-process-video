@@ -5,7 +5,6 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.contains;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.timeout;
@@ -107,7 +106,7 @@ class FramesExtractorTest {
 
         // Removido o segundo matcher pois o log real não envia args extras aqui
         verify(loggerPort, timeout(10000).atLeastOnce()).debug(
-                eq("[FramesExtractor][closeResourcesSafely] Closing all resources")
+                "[FramesExtractor][closeResourcesSafely] Closing all resources"
         );
     }
 
@@ -119,8 +118,8 @@ class FramesExtractorTest {
         );
 
         verify(loggerPort).error(
-                eq("[FramesExtractor][extractFramesAsZip] Failed to create ZIP stream, error={}"),
-                eq("Video data stream is null")
+                "[FramesExtractor][extractFramesAsZip] Failed to create ZIP stream, error={}",
+                "Video data stream is null"
         );
     }
 }

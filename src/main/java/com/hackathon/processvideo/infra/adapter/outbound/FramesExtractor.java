@@ -124,16 +124,7 @@ public class FramesExtractor implements VideoFrameExtractorPort {
             final int extractedFrameCount = (totalFrames + FPS - 1) / FPS;
 
             // Generate and write manifest.json to ZIP
-            try {
-                final String manifestJson = manifestGenerator.generateManifest(videoKey, extractedFrameCount);
-                final ZipEntry manifestEntry = new ZipEntry(manifestGenerator.getManifestFilename());
-                zos.putNextEntry(manifestEntry);
-                zos.write(manifestJson.getBytes());
-                zos.closeEntry();
-                loggerPort.info("[FramesExtractor][extractFramesInBackground] {} manifest.json written to ZIP, frameCount={}", getThreadInfo(), extractedFrameCount);
-            } catch (IOException e) {
-                loggerPort.warn("[FramesExtractor][extractFramesInBackground] {} Failed to write manifest.json, error={}", getThreadInfo(), e.getMessage());
-            }
+            writeManifestToZip(videoKey, extractedFrameCount, zos);
 
             loggerPort.debug("[FramesExtractor][extractFramesInBackground] {} Finishing ZIP output stream", getThreadInfo());
             zos.finish();
@@ -146,6 +137,19 @@ public class FramesExtractor implements VideoFrameExtractorPort {
             handleExtractionError(e, pos);
         } finally {
             closeResourcesSafely(pos, tempVideo);
+        }
+    }
+
+    private void writeManifestToZip(String videoKey, int extractedFrameCount, ZipOutputStream zos) {
+        try {
+            final String manifestJson = manifestGenerator.generateManifest(videoKey, extractedFrameCount);
+            final ZipEntry manifestEntry = new ZipEntry(manifestGenerator.getManifestFilename());
+            zos.putNextEntry(manifestEntry);
+            zos.write(manifestJson.getBytes());
+            zos.closeEntry();
+            loggerPort.info("[FramesExtractor][writeManifestToZip] {} manifest.json written to ZIP, frameCount={}", getThreadInfo(), extractedFrameCount);
+        } catch (IOException e) {
+            loggerPort.warn("[FramesExtractor][writeManifestToZip] {} Failed to write manifest.json, error={}", getThreadInfo(), e.getMessage());
         }
     }
 
