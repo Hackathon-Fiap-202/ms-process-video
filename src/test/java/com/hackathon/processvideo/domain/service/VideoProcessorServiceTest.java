@@ -42,8 +42,9 @@ class VideoProcessorServiceTest {
 
     private static final String INPUT_BUCKET = "input-videos";
     private static final String OUTPUT_BUCKET = "output-videos";
+    private static final String OUTPUT_PREFIX = "video-processed-storage/";
     private static final String VIDEO_KEY = "videos/sample-video.mp4";
-    private static final String OUTPUT_KEY = "frames/sample-video.zip";
+    private static final String OUTPUT_KEY = "video-processed-storage/end-process/sample-video.zip";
     private static final String ENTRY_PREFIX = "sample-video";
     private static final long ARCHIVE_SIZE = 2_560_000; // 2.5 MB (approximately 50 frames)
     private static final int EXPECTED_FRAME_COUNT = 50; // 2_560_000 / (50 * 1024)
@@ -69,7 +70,8 @@ class VideoProcessorServiceTest {
                 videoFrameExtractorPort,
                 videoStatusUpdatePort,
                 loggerPort,
-                OUTPUT_BUCKET
+                OUTPUT_BUCKET,
+                OUTPUT_PREFIX
         );
     }
 
@@ -138,7 +140,7 @@ class VideoProcessorServiceTest {
             videoProcessorService.execute(VIDEO_KEY, INPUT_BUCKET);
 
             // Assert
-            verify(fileServicePort).uploadFile(eq(OUTPUT_BUCKET), eq("frames/sample-video.zip"), any(InputStream.class));
+            verify(fileServicePort).uploadFile(eq(OUTPUT_BUCKET), eq("video-processed-storage/end-process/sample-video.zip"), any(InputStream.class));
         }
 
         @Test
@@ -171,7 +173,7 @@ class VideoProcessorServiceTest {
         void shouldHandleNestedVideoPath() throws IOException {
             // Arrange
             final String nestedVideoKey = "path/to/videos/nested-video.mp4";
-            final String expectedOutputKey = "frames/nested-video.zip";
+            final String expectedOutputKey = "video-processed-storage/end-process/nested-video.zip";
             final String expectedPrefix = "nested-video";
 
             final InputStream videoStream = new ByteArrayInputStream("video".getBytes());
@@ -442,7 +444,7 @@ class VideoProcessorServiceTest {
         void shouldHandleVideoKeyWithoutExtension() throws IOException {
             // Arrange
             final String videoKeyNoExt = "videos/video-no-extension";
-            final String expectedOutputKey = "frames/video-no-extension.zip";
+            final String expectedOutputKey = "video-processed-storage/end-process/video-no-extension.zip";
             final String expectedPrefix = "video-no-extension";
 
             final InputStream videoStream = new ByteArrayInputStream("video".getBytes());
