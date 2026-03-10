@@ -24,6 +24,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -157,7 +158,7 @@ class ConsumerVideoQueueTest {
     }
 
     @Test
-    @DisplayName("Should handle empty or null records in notification")
+    @DisplayName("Should handle empty records list in notification")
     void consumeMessage_EmptyRecords() {
         // Arrange
         var notification = mock(S3EventNotification.class);
@@ -169,6 +170,40 @@ class ConsumerVideoQueueTest {
 
         // Assert
         verify(loggerPort).warn(contains("No records found in S3 event notification"), any(), any(), any());
+        verify(processVideoUseCase, never()).execute(anyString(), anyString());
+    }
+
+    @Test
+    @DisplayName("Should handle null records list in notification")
+    void consumeMessage_NullRecords() {
+        // Arrange
+        var notification = mock(S3EventNotification.class);
+        when(jsonConverter.toEventVideo(payload)).thenReturn(notification);
+        when(notification.getRecords()).thenReturn(null); // Null records list
+
+        // Act
+        consumerVideoQueue.consumeMessage(payload);
+
+        // Assert
+        verify(loggerPort).warn(contains("No records found in S3 event notification"), any(), any(), any());
+        verify(processVideoUseCase, never()).execute(anyString(), anyString());
+    }
+
+    @Test
+    @DisplayName("Should handle null first record in S3 event records list")
+    void consumeMessage_NullFirstRecord() {
+        // Arrange
+        var notification = mock(S3EventNotification.class);
+        when(jsonConverter.toEventVideo(payload)).thenReturn(notification);
+        final List<S3EventRecord> recordsWithNull = new java.util.ArrayList<>();
+        recordsWithNull.add(null); // First element is null
+        when(notification.getRecords()).thenReturn(recordsWithNull);
+
+        // Act
+        consumerVideoQueue.consumeMessage(payload);
+
+        // Assert
+        verify(loggerPort).warn(contains("S3 record or S3 data is null"), any(), any(), any());
         verify(processVideoUseCase, never()).execute(anyString(), anyString());
     }
 
@@ -189,6 +224,90 @@ class ConsumerVideoQueueTest {
         // Assert
         verify(loggerPort).warn(contains("S3 record or S3 data is null"), any(), any(), any());
         verify(processVideoUseCase, never()).execute(anyString(), anyString());
+    }
+
+    @Test
+    @DisplayName("Should not evict fresh cache entries during cleanup")
+    void consumeMessage_FreshEntryNotEvictedDuringCleanup() {
+        // Arrange — process a video to cache it
+        var s3Event = createMockS3Event("fresh-video.mp4");
+        when(jsonConverter.toEventVideo(payload)).thenReturn(s3Event);
+        consumerVideoQueue.consumeMessage(payload);
+        verify(processVideoUseCase, times(1)).execute("fresh-video.mp4", "my-bucket");
+
+        // Force lastCleanupTime to be old enough to trigger a cleanup run,
+        // but leave the cache entry timestamp as recent (current time)
+        final java.util.concurrent.atomic.AtomicLong lastCleanup =
+                (java.util.concurrent.atomic.AtomicLong)
+                        ReflectionTestUtils.getField(consumerVideoQueue, "lastCleanupTime");
+        lastCleanup.set(System.currentTimeMillis() - 120_000L); // trigger cleanup on next call
+
+        // Act — second call: cleanup runs but entry is fresh, so it is NOT evicted
+        consumerVideoQueue.consumeMessage(payload);
+
+        // Assert — still deduplicated (entry survived cleanup because it was fresh)
+        verify(processVideoUseCase, times(1)).execute("fresh-video.mp4", "my-bucket");
+    }
+
+    @Test
+    @DisplayName("Should ignore message with null key in S3 object")
+    void consumeMessage_NullKey() {
+        // Arrange
+        var s3Event = createMockS3Event(null);
+        when(jsonConverter.toEventVideo(payload)).thenReturn(s3Event);
+
+        // Act
+        consumerVideoQueue.consumeMessage(payload);
+
+        // Assert
+        verify(processVideoUseCase, never()).execute(anyString(), anyString());
+    }
+
+    @Test
+    @DisplayName("Should ignore message with empty key in S3 object")
+    void consumeMessage_EmptyKey() {
+        // Arrange
+        var s3Event = createMockS3Event("");
+        when(jsonConverter.toEventVideo(payload)).thenReturn(s3Event);
+
+        // Act
+        consumerVideoQueue.consumeMessage(payload);
+
+        // Assert
+        verify(processVideoUseCase, never()).execute(anyString(), anyString());
+    }
+
+    @Test
+    @DisplayName("Should clean up expired cache entries after TTL and process event again")
+    void consumeMessage_CleanupExpiredCacheEntries() {
+        // Arrange
+        var s3Event = createMockS3Event("expiry-video.mp4");
+        when(jsonConverter.toEventVideo(payload)).thenReturn(s3Event);
+
+        // First call — mark as processed
+        consumerVideoQueue.consumeMessage(payload);
+        verify(processVideoUseCase, times(1)).execute("expiry-video.mp4", "my-bucket");
+
+        // Simulate cache TTL expiry by setting lastCleanupTime far in the past
+        // and backdating the cache entry so it appears expired
+        final long expiredTimestamp = System.currentTimeMillis() - 400_000L; // older than 5-min TTL
+        @SuppressWarnings("unchecked")
+        final java.util.concurrent.ConcurrentHashMap<String, Long> cache =
+                (java.util.concurrent.ConcurrentHashMap<String, Long>)
+                        ReflectionTestUtils.getField(consumerVideoQueue, "processedEvents");
+        cache.put("expiry-video.mp4", expiredTimestamp);
+
+        // Force lastCleanupTime to be old enough to trigger cleanup
+        final java.util.concurrent.atomic.AtomicLong lastCleanup =
+                (java.util.concurrent.atomic.AtomicLong)
+                        ReflectionTestUtils.getField(consumerVideoQueue, "lastCleanupTime");
+        lastCleanup.set(System.currentTimeMillis() - 120_000L); // 2 minutes ago
+
+        // Act — second call should NOT be deduplicated since the cache entry expired
+        consumerVideoQueue.consumeMessage(payload);
+
+        // Assert — processed again after cache eviction
+        verify(processVideoUseCase, times(2)).execute("expiry-video.mp4", "my-bucket");
     }
 
     // Helper method to build the complex S3 Event structure
