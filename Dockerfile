@@ -3,13 +3,16 @@ FROM amazoncorretto:21-alpine AS build
 
 WORKDIR /app
 
-RUN apk add --no-cache maven
+RUN apk add --no-cache curl maven
 
 COPY pom.xml .
 RUN mvn dependency:go-offline
 
 COPY src ./src
 RUN mvn clean package -DskipTests
+
+# Download Datadog Java agent during build so the runtime image has no extra tools
+RUN curl -Lo /app/dd-java-agent.jar https://dtdg.co/latest-java-tracer
 
 
 # ----- RUNTIME PHASE -----
@@ -23,9 +26,11 @@ WORKDIR /app
 RUN chown -R appuser:appgroup /app
 
 COPY --from=build /app/target/*.jar app.jar
-RUN chown appuser:appgroup /app/app.jar
+# Datadog Java agent — auto-instruments Spring Boot, SQS, S3, HTTP clients
+COPY --from=build /app/dd-java-agent.jar /dd-java-agent.jar
+RUN chown appuser:appgroup /app/app.jar /dd-java-agent.jar
 
 # Switch to non-root user
 USER appuser
 
-ENTRYPOINT ["java", "-Dspring.profiles.active=${SPRING_PROFILES_ACTIVE:-prod}", "-jar", "app.jar"]
+ENTRYPOINT ["java", "-javaagent:/dd-java-agent.jar", "-Dspring.profiles.active=${SPRING_PROFILES_ACTIVE:-prod}", "-jar", "app.jar"]
