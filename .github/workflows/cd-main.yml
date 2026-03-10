@@ -1,10 +1,7 @@
-name: CD - Production
+name: CD - Production (ECS)
 
 on:
   push:
-    branches:
-      - main
-  pull_request:
     branches:
       - main
 
@@ -15,24 +12,24 @@ permissions:
 env:
   AWS_REGION: us-east-1
   AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
-  CLUSTER_NAME: nextime-cluster
   ECR_REPOSITORY: process-video
   ECR_URI: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com/process-video
+  ECS_CLUSTER: nextime-frame-cluster
+  ECS_SERVICE: process-video
 
 jobs:
-  deploy-prod:
-    name: Build, Terraform & Deploy (Prod)
+  test:
+    name: Build & Test
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
 
-      # --- INÍCIO: BLOCO DE TESTES DE INTEGRAÇÃO ---
       - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
           java-version: '21'
-          distribution: alpine
+          distribution: temurin
 
       - name: Cache Maven
         uses: actions/cache@v3
@@ -42,55 +39,34 @@ jobs:
           restore-keys: |
             maven-${{ runner.os }}-
 
-      - name: Verificar Docker Compose
-        run: docker compose version
-
-      - name: Subir LocalStack (Ambiente de Teste)
-        run: docker compose up -d localstack
-
-      - name: Aguardar LocalStack
-        run: |
-          echo "Aguardando LocalStack subir..."
-          sleep 25
-
-      - name: Rodar testes e Análise Sonar
+      - name: Run tests & SonarCloud analysis
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: |
           mvn clean verify org.sonarsource.scanner.maven:sonar-maven-plugin:sonar \
-          -Dsonar.projectKey=Hackathon-Fiap-202_ms-process-video \
-          -Dsonar.organization=hackathon-fiap-202 \
-          -Dsonar.host.url=https://sonarcloud.io
+            -Dsonar.projectKey=Hackathon-Fiap-202_ms-process-video \
+            -Dsonar.organization=hackathon-fiap-202 \
+            -Dsonar.host.url=https://sonarcloud.io
 
-      - name: Derrubar containers de teste
-        run: docker compose down -v
+  deploy:
+    name: Build Image & Deploy to ECS
+    runs-on: ubuntu-latest
+    needs: test
 
-      # --- FIM: BLOCO DE TESTES DE INTEGRAÇÃO ---
+    steps:
+      - uses: actions/checkout@v4
 
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/github-action-role
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v2
-        with:
-          terraform_version: 1.6.6
-
-      - name: Terraform Init
-        working-directory: infra/terraform
-        run: terraform init
-
-      - name: Terraform Apply
-        working-directory: infra/terraform
-        run: terraform apply -auto-approve
-
-      - name: Login no Amazon ECR
+      - name: Login to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build e Push da imagem
+      - name: Build and push Docker image
         env:
           IMAGE_TAG: ${{ github.sha }}
         run: |
@@ -99,23 +75,17 @@ jobs:
           docker push $ECR_URI:$IMAGE_TAG
           docker push $ECR_URI:latest
 
-      - name: Configure kubectl
+      - name: Force ECS service redeployment
         run: |
-          aws eks update-kubeconfig \
-            --region ${{ env.AWS_REGION }} \
-            --name ${{ env.CLUSTER_NAME }}
+          aws ecs update-service \
+            --cluster $ECS_CLUSTER \
+            --service $ECS_SERVICE \
+            --force-new-deployment \
+            --region $AWS_REGION
 
-      - name: Aplicar manifests do Kubernetes
-        working-directory: infra/k8s
-        run: kubectl apply -R -f .
-
-      - name: Atualizar Deployment com nova imagem (se existir)
+      - name: Wait for ECS service to stabilize
         run: |
-          if kubectl get deployment process-video-deployment >/dev/null 2>&1; then
-            kubectl set image deployment/process-video-deployment \
-              process-video=$ECR_URI:${{ github.sha }}
-
-            kubectl rollout status deployment/process-video-deployment
-          else
-            echo "Deployment process-video-deployment ainda não existe (primeiro deploy)."
-          fi
+          aws ecs wait services-stable \
+            --cluster $ECS_CLUSTER \
+            --services $ECS_SERVICE \
+            --region $AWS_REGION

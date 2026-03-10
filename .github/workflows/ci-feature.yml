@@ -12,8 +12,8 @@ on:
 
 jobs:
 
-  docker-build:
-    name: Build Docker Image
+  build-and-test:
+    name: Build, Test & Docker
     runs-on: ubuntu-latest
 
     steps:
@@ -25,8 +25,16 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
 
-      - name: Build JAR
-        run: mvn clean package -DskipTests
+      - name: Cache Maven
+        uses: actions/cache@v3
+        with:
+          path: ~/.m2
+          key: maven-${{ runner.os }}-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            maven-${{ runner.os }}-
+
+      - name: Run tests
+        run: mvn clean verify
 
       - name: Build Docker Image
         run: |
