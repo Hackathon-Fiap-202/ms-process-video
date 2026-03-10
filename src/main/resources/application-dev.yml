@@ -1,0 +1,32 @@
+spring:
+  cloud:
+    aws:
+      region:
+        static: us-east-1
+      s3:
+        endpoint: ${AWS_ENDPOINT_URL:http://localhost:4566}
+        path-style-access-enabled: true
+      sqs:
+        endpoint: ${AWS_ENDPOINT_URL:http://localhost:4566}
+      credentials:
+        access-key: test
+        secret-key: test
+
+io:
+  awspring:
+    cloud:
+      sqs:
+        listener:
+          poll-timeout: 10
+          max-concurrent-messages: 3       # ← Limit to 3 concurrent SQS consumers
+          max-messages-per-poll: 3         # ← Poll 3 messages per request
+          acknowledgement-mode: MANUAL
+          queue-attributes-resolution-strategy: INHERIT
+
+app:
+  sqs:
+    video-process-command-url: http://localhost:4566/000000000000/video-process-command
+    video-updated-event-url: http://localhost:4566/000000000000/video-updated-event
+  frame-extraction:
+    thread-pool-size: 4                    # ← 4 threads per video frame extraction
+    queue-capacity: 100

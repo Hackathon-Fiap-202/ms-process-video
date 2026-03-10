@@ -4,6 +4,10 @@ target/
 !**/src/main/**/target/
 !**/src/test/**/target/
 
+### Environment Variables ###
+.env
+!.env.example
+
 ### STS ###
 .apt_generated
 .classpath
@@ -31,3 +35,8 @@ build/
 
 ### VS Code ###
 .vscode/
+/temp/
+/localstack/cache/
+/localstack/lib/
+/localstack/logs/
+/localstack/tmp/
