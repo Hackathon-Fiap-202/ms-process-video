@@ -21,17 +21,20 @@ public class VideoProcessorService implements ProcessVideoUseCase {
     private final VideoStatusUpdatePort videoStatusUpdatePort;
     private final LoggerPort loggerPort;
     private final String outputBucketName;
+    private final String outputPrefix;
 
     public VideoProcessorService(FileServicePort fileServicePort,
                                  VideoFrameExtractorPort videoFrameExtractorPort,
                                  VideoStatusUpdatePort videoStatusUpdatePort,
                                  LoggerPort loggerPort,
-                                 @Value("${app.buckets.video-processed-storage}") String outputBucketName) {
+                                 @Value("${app.buckets.video-bucket-name}") String outputBucketName,
+                                 @Value("${app.buckets.video-processed-prefix}") String outputPrefix) {
         this.fileServicePort = fileServicePort;
         this.videoFrameExtractorPort = videoFrameExtractorPort;
         this.videoStatusUpdatePort = videoStatusUpdatePort;
         this.loggerPort = loggerPort;
         this.outputBucketName = outputBucketName;
+        this.outputPrefix = outputPrefix;
     }
 
     @Override
@@ -98,7 +101,7 @@ public class VideoProcessorService implements ProcessVideoUseCase {
         final String nameWithoutExtension = filename.contains(".")
                 ? filename.substring(0, filename.lastIndexOf('.'))
                 : filename;
-        return "frames/" + nameWithoutExtension + ".zip";
+        return outputPrefix + "end-process/" + nameWithoutExtension + ".zip";
     }
 
     private String extractPrefixFromKey(String keyName) {
