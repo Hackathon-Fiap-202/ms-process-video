@@ -2,7 +2,7 @@ spring:
   application:
     name: process-video
   profiles:
-    active: dev
+    active: ${SPRING_PROFILES_ACTIVE:dev}
   cloud:
     aws:
       sqs:
@@ -18,8 +18,9 @@ app:
     bucket-videos: video-storage-bucket
     bucket-frames: frame-storage-bucket
   buckets:
-    video-input-storage: video-input-storage
-    video-processed-storage: video-processed-storage
+    video-bucket-name: ${APP_BUCKETS_VIDEO_BUCKET_NAME:nextime-frame-video-storage}
+    video-input-prefix: ${APP_BUCKETS_VIDEO_INPUT_PREFIX:video-input-storage/}
+    video-processed-prefix: ${APP_BUCKETS_VIDEO_PROCESSED_PREFIX:video-processed-storage/}
   queues:
     video-process-command: video-process-command
     video-updated-event: video-updated-event

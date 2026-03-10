@@ -5,7 +5,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doThrow;
@@ -40,11 +39,14 @@ class FramesExtractorPrivateMethodsTest {
         @Mock
         private LoggerPort loggerPort;
 
+        @Mock
+        private ManifestGenerator manifestGenerator;
+
         private FramesExtractor framesExtractor;
 
         @BeforeEach
         void setUp() {
-                framesExtractor = new FramesExtractor(loggerPort, 2, 10);
+                framesExtractor = new FramesExtractor(loggerPort, 2, 10, manifestGenerator);
         }
 
         @Test
@@ -506,10 +508,10 @@ class FramesExtractorPrivateMethodsTest {
                 PipedOutputStream pos = new PipedOutputStream();
 
                 Method method = FramesExtractor.class.getDeclaredMethod("extractFramesInBackground", File.class,
-                                PipedOutputStream.class);
+                                PipedOutputStream.class, String.class);
                 method.setAccessible(true);
 
-                assertDoesNotThrow(() -> method.invoke(framesExtractor, dummyFile, pos));
+                assertDoesNotThrow(() -> method.invoke(framesExtractor, dummyFile, pos, "test-key"));
 
                 // Verify error logging occurred
                 verify(loggerPort, atLeastOnce()).error(
@@ -527,7 +529,7 @@ class FramesExtractorPrivateMethodsTest {
                 java.util.concurrent.ExecutorService mockExecutor = mock(java.util.concurrent.ExecutorService.class);
 
                 // Mock successful termination
-                Mockito.when(mockExecutor.awaitTermination(eq(10L), eq(TimeUnit.MINUTES))).thenReturn(true);
+                Mockito.when(mockExecutor.awaitTermination(10L, TimeUnit.MINUTES)).thenReturn(true);
 
                 Method method = FramesExtractor.class.getDeclaredMethod("shutdownExecutorService",
                                 java.util.concurrent.ExecutorService.class);
@@ -538,7 +540,7 @@ class FramesExtractorPrivateMethodsTest {
                 // Verify shutdown was called
                 verify(mockExecutor).shutdown();
                 // Verify awaitTermination was called with correct parameters
-                verify(mockExecutor).awaitTermination(eq(10L), eq(TimeUnit.MINUTES));
+                verify(mockExecutor).awaitTermination(10L, TimeUnit.MINUTES);
                 // Verify shutdownNow was NOT called (since it terminated successfully)
                 verify(mockExecutor, Mockito.never()).shutdownNow();
         }
@@ -549,7 +551,7 @@ class FramesExtractorPrivateMethodsTest {
                 java.util.concurrent.ExecutorService mockExecutor = mock(java.util.concurrent.ExecutorService.class);
 
                 // Mock timeout - awaitTermination returns false
-                Mockito.when(mockExecutor.awaitTermination(eq(10L), eq(TimeUnit.MINUTES))).thenReturn(false);
+                Mockito.when(mockExecutor.awaitTermination(10L, TimeUnit.MINUTES)).thenReturn(false);
 
                 Method method = FramesExtractor.class.getDeclaredMethod("shutdownExecutorService",
                                 java.util.concurrent.ExecutorService.class);
@@ -560,7 +562,7 @@ class FramesExtractorPrivateMethodsTest {
                 // Verify shutdown was called first
                 verify(mockExecutor).shutdown();
                 // Verify awaitTermination was called
-                verify(mockExecutor).awaitTermination(eq(10L), eq(TimeUnit.MINUTES));
+                verify(mockExecutor).awaitTermination(10L, TimeUnit.MINUTES);
                 // Verify shutdownNow was called due to timeout
                 verify(mockExecutor).shutdownNow();
                 // Verify warning log was called
@@ -573,7 +575,7 @@ class FramesExtractorPrivateMethodsTest {
                 java.util.concurrent.ExecutorService mockExecutor = mock(java.util.concurrent.ExecutorService.class);
 
                 // Mock InterruptedException during awaitTermination
-                Mockito.when(mockExecutor.awaitTermination(eq(10L), eq(TimeUnit.MINUTES)))
+                Mockito.when(mockExecutor.awaitTermination(10L, TimeUnit.MINUTES))
                                 .thenThrow(new InterruptedException("Test interruption"));
 
                 Method method = FramesExtractor.class.getDeclaredMethod("shutdownExecutorService",
@@ -585,7 +587,7 @@ class FramesExtractorPrivateMethodsTest {
                 // Verify shutdown was called first
                 verify(mockExecutor).shutdown();
                 // Verify awaitTermination was called
-                verify(mockExecutor).awaitTermination(eq(10L), eq(TimeUnit.MINUTES));
+                verify(mockExecutor).awaitTermination(10L, TimeUnit.MINUTES);
                 // Verify shutdownNow was called due to interruption
                 verify(mockExecutor).shutdownNow();
                 // Verify error log was called with correct message pattern

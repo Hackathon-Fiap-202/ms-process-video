@@ -16,7 +16,6 @@ import com.hackathon.processvideo.domain.port.out.LoggerPort;
 import com.hackathon.processvideo.domain.port.out.VideoFrameExtractorPort;
 import com.hackathon.processvideo.domain.port.out.VideoStatusUpdatePort;
 import java.io.ByteArrayInputStream;
-import java.io.IOException;
 import java.io.InputStream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -42,8 +41,9 @@ class VideoProcessorServiceTest {
 
     private static final String INPUT_BUCKET = "input-videos";
     private static final String OUTPUT_BUCKET = "output-videos";
+    private static final String OUTPUT_PREFIX = "video-processed-storage/";
     private static final String VIDEO_KEY = "videos/sample-video.mp4";
-    private static final String OUTPUT_KEY = "frames/sample-video.zip";
+    private static final String OUTPUT_KEY = "video-processed-storage/end-process/sample-video.zip";
     private static final String ENTRY_PREFIX = "sample-video";
     private static final long ARCHIVE_SIZE = 2_560_000; // 2.5 MB (approximately 50 frames)
     private static final int EXPECTED_FRAME_COUNT = 50; // 2_560_000 / (50 * 1024)
@@ -69,7 +69,8 @@ class VideoProcessorServiceTest {
                 videoFrameExtractorPort,
                 videoStatusUpdatePort,
                 loggerPort,
-                OUTPUT_BUCKET
+                OUTPUT_BUCKET,
+                OUTPUT_PREFIX
         );
     }
 
@@ -79,7 +80,7 @@ class VideoProcessorServiceTest {
 
         @Test
         @DisplayName("Should successfully process video: retrieve, extract frames, upload, and delete source")
-        void shouldSuccessfullyProcessVideo() throws IOException {
+        void shouldSuccessfullyProcessVideo() {
             // Arrange
             final InputStream videoStream = new ByteArrayInputStream("video content".getBytes());
             final InputStream zippedFrames = new ByteArrayInputStream("zipped content".getBytes());
@@ -120,7 +121,7 @@ class VideoProcessorServiceTest {
 
         @Test
         @DisplayName("Should correctly format output key from input key")
-        void shouldFormatOutputKeyCorrectly() throws IOException {
+        void shouldFormatOutputKeyCorrectly() {
             // Arrange
             final InputStream videoStream = new ByteArrayInputStream("video".getBytes());
             final InputStream zippedFrames = new ByteArrayInputStream("zipped".getBytes());
@@ -138,12 +139,12 @@ class VideoProcessorServiceTest {
             videoProcessorService.execute(VIDEO_KEY, INPUT_BUCKET);
 
             // Assert
-            verify(fileServicePort).uploadFile(eq(OUTPUT_BUCKET), eq("frames/sample-video.zip"), any(InputStream.class));
+            verify(fileServicePort).uploadFile(eq(OUTPUT_BUCKET), eq("video-processed-storage/end-process/sample-video.zip"), any(InputStream.class));
         }
 
         @Test
         @DisplayName("Should correctly estimate frame count from archive size")
-        void shouldCorrectlyEstimateFrameCount() throws IOException {
+        void shouldCorrectlyEstimateFrameCount() {
             // Arrange
             final long archiveSize = 5_120_000; // Should result in 100 frames
             final InputStream videoStream = new ByteArrayInputStream("video".getBytes());
@@ -168,10 +169,10 @@ class VideoProcessorServiceTest {
 
         @Test
         @DisplayName("Should handle video key with nested path correctly")
-        void shouldHandleNestedVideoPath() throws IOException {
+        void shouldHandleNestedVideoPath() {
             // Arrange
             final String nestedVideoKey = "path/to/videos/nested-video.mp4";
-            final String expectedOutputKey = "frames/nested-video.zip";
+            final String expectedOutputKey = "video-processed-storage/end-process/nested-video.zip";
             final String expectedPrefix = "nested-video";
 
             final InputStream videoStream = new ByteArrayInputStream("video".getBytes());
@@ -201,7 +202,7 @@ class VideoProcessorServiceTest {
 
         @Test
         @DisplayName("Should handle IOException during frame extraction gracefully")
-        void shouldHandleExtractionIOException() throws IOException {
+        void shouldHandleExtractionIOException() {
             // Arrange
             final InputStream videoStream = new ByteArrayInputStream("video".getBytes());
 
@@ -219,7 +220,7 @@ class VideoProcessorServiceTest {
             verify(fileServicePort, never()).deleteFile(INPUT_BUCKET, VIDEO_KEY);
 
             // Status notification should report failure
-            verify(videoStatusUpdatePort).notifyStatus(eq(VIDEO_KEY), eq(false), eq(0), eq(0L));
+            verify(videoStatusUpdatePort).notifyStatus(VIDEO_KEY, false, 0, 0L);
 
             // Error should be logged
             verify(loggerPort).error(anyString(), anyString(), anyString(), anyString());
@@ -227,7 +228,7 @@ class VideoProcessorServiceTest {
 
         @Test
         @DisplayName("Should handle VideoProcessingException during frame extraction")
-        void shouldHandleExtractionVideoProcessingException() throws IOException {
+        void shouldHandleExtractionVideoProcessingException() {
             // Arrange
             final InputStream videoStream = new ByteArrayInputStream("video".getBytes());
 
@@ -242,7 +243,7 @@ class VideoProcessorServiceTest {
             // Assert
             verify(fileServicePort, never()).uploadFile(anyString(), anyString(), any(InputStream.class));
             verify(fileServicePort, never()).deleteFile(INPUT_BUCKET, VIDEO_KEY);
-            verify(videoStatusUpdatePort).notifyStatus(eq(VIDEO_KEY), eq(false), eq(0), eq(0L));
+            verify(videoStatusUpdatePort).notifyStatus(VIDEO_KEY, false, 0, 0L);
         }
     }
 
@@ -252,7 +253,7 @@ class VideoProcessorServiceTest {
 
         @Test
         @DisplayName("Should handle upload failure and not delete source file")
-        void shouldHandleUploadFailure() throws IOException {
+        void shouldHandleUploadFailure() {
             // Arrange
             final InputStream videoStream = new ByteArrayInputStream("video".getBytes());
             final InputStream zippedFrames = new ByteArrayInputStream("zipped".getBytes());
@@ -272,7 +273,7 @@ class VideoProcessorServiceTest {
             verify(fileServicePort, never()).deleteFile(INPUT_BUCKET, VIDEO_KEY);
 
             // Status notification should report failure
-            verify(videoStatusUpdatePort).notifyStatus(eq(VIDEO_KEY), eq(false), eq(0), eq(0L));
+            verify(videoStatusUpdatePort).notifyStatus(VIDEO_KEY, false, 0, 0L);
 
             // Error should be logged
             verify(loggerPort).error(anyString(), anyString(), anyString());
@@ -280,7 +281,7 @@ class VideoProcessorServiceTest {
 
         @Test
         @DisplayName("Should handle IOException during file upload")
-        void shouldHandleUploadIOException() throws IOException {
+        void shouldHandleUploadIOException() {
             // Arrange
             final InputStream videoStream = new ByteArrayInputStream("video".getBytes());
             final InputStream zippedFrames = new ByteArrayInputStream("zipped".getBytes());
@@ -297,7 +298,7 @@ class VideoProcessorServiceTest {
 
             // Assert
             verify(fileServicePort, never()).deleteFile(INPUT_BUCKET, VIDEO_KEY);
-            verify(videoStatusUpdatePort).notifyStatus(eq(VIDEO_KEY), eq(false), eq(0), eq(0L));
+            verify(videoStatusUpdatePort).notifyStatus(VIDEO_KEY, false, 0, 0L);
         }
     }
 
@@ -307,7 +308,7 @@ class VideoProcessorServiceTest {
 
         @Test
         @DisplayName("Should handle IOException when retrieving video from S3")
-        void shouldHandleFileRetrievalFailure() throws IOException {
+        void shouldHandleFileRetrievalFailure() {
             // Arrange
             when(fileServicePort.getFile(INPUT_BUCKET, VIDEO_KEY))
                     .thenThrow(new FileNotExistException("File not found"));
@@ -323,7 +324,7 @@ class VideoProcessorServiceTest {
             verify(fileServicePort, never()).uploadFile(anyString(), anyString(), any(InputStream.class));
 
             // Status notification should report failure
-            verify(videoStatusUpdatePort).notifyStatus(eq(VIDEO_KEY), eq(false), eq(0), eq(0L));
+            verify(videoStatusUpdatePort).notifyStatus(VIDEO_KEY, false, 0, 0L);
 
             // Error should be logged
             verify(loggerPort).error(anyString(), anyString(), anyString(), anyString());
@@ -336,7 +337,7 @@ class VideoProcessorServiceTest {
 
         @Test
         @DisplayName("Should always notify status regardless of success or failure")
-        void shouldAlwaysNotifyStatus() throws IOException {
+        void shouldAlwaysNotifyStatus() {
             // Arrange
             when(fileServicePort.getFile(INPUT_BUCKET, VIDEO_KEY))
                     .thenThrow(new FileNotExistException("File not found"));
@@ -350,7 +351,7 @@ class VideoProcessorServiceTest {
 
         @Test
         @DisplayName("Should notify with correct success status on successful completion")
-        void shouldNotifySuccessStatus() throws IOException {
+        void shouldNotifySuccessStatus() {
             // Arrange
             final InputStream videoStream = new ByteArrayInputStream("video".getBytes());
             final InputStream zippedFrames = new ByteArrayInputStream("zipped".getBytes());
@@ -373,7 +374,7 @@ class VideoProcessorServiceTest {
 
         @Test
         @DisplayName("Should notify with correct failure status and zero metrics on failure")
-        void shouldNotifyFailureStatus() throws IOException {
+        void shouldNotifyFailureStatus() {
             // Arrange
             when(fileServicePort.getFile(INPUT_BUCKET, VIDEO_KEY))
                     .thenThrow(new FileNotExistException("File not found"));
@@ -392,7 +393,7 @@ class VideoProcessorServiceTest {
 
         @Test
         @DisplayName("Should log execution start and progress")
-        void shouldLogExecutionProgress() throws IOException {
+        void shouldLogExecutionProgress() {
             // Arrange
             final InputStream videoStream = new ByteArrayInputStream("video".getBytes());
             final InputStream zippedFrames = new ByteArrayInputStream("zipped".getBytes());
@@ -420,7 +421,7 @@ class VideoProcessorServiceTest {
 
         @Test
         @DisplayName("Should log errors when exceptions occur")
-        void shouldLogErrors() throws IOException {
+        void shouldLogErrors() {
             // Arrange
             when(fileServicePort.getFile(INPUT_BUCKET, VIDEO_KEY))
                     .thenThrow(new FileNotExistException("File not found"));
@@ -439,10 +440,10 @@ class VideoProcessorServiceTest {
 
         @Test
         @DisplayName("Should handle video key without extension")
-        void shouldHandleVideoKeyWithoutExtension() throws IOException {
+        void shouldHandleVideoKeyWithoutExtension() {
             // Arrange
             final String videoKeyNoExt = "videos/video-no-extension";
-            final String expectedOutputKey = "frames/video-no-extension.zip";
+            final String expectedOutputKey = "video-processed-storage/end-process/video-no-extension.zip";
             final String expectedPrefix = "video-no-extension";
 
             final InputStream videoStream = new ByteArrayInputStream("video".getBytes());
@@ -467,7 +468,7 @@ class VideoProcessorServiceTest {
 
         @Test
         @DisplayName("Should handle very large archive sizes correctly")
-        void shouldHandleLargeArchiveSizes() throws IOException {
+        void shouldHandleLargeArchiveSizes() {
             // Arrange
             final long largeArchiveSize = 512_000_000; // 512 MB
             final int expectedLargeFrameCount = (int) (largeArchiveSize / (50 * 1024));
@@ -493,7 +494,7 @@ class VideoProcessorServiceTest {
 
         @Test
         @DisplayName("Should handle minimum frame count when archive size is very small")
-        void shouldHandleSmallArchiveSizes() throws IOException {
+        void shouldHandleSmallArchiveSizes() {
             // Arrange
             final long smallArchiveSize = 1024; // 1 KB
 

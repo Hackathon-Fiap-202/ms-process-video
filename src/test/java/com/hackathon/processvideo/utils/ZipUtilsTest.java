@@ -230,7 +230,8 @@ class ZipUtilsTest {
         try {
             if (madeUnreadable) {
                 // WHEN/THEN: Attempting to compress should fail
-                assertThatThrownBy(() -> ZipUtils.compressFiles(List.of(fileObject)))
+                final List<File> files = List.of(fileObject);
+                assertThatThrownBy(() -> ZipUtils.compressFiles(files))
                         .isInstanceOf(VideoProcessingException.class);
             } else {
                 // On systems where we can't make files unreadable, skip the test
@@ -331,8 +332,8 @@ class ZipUtilsTest {
         zipResult.close();
         zipResult.close(); // Should not throw exception
 
-        // THEN: No exception is thrown
-        assertThat(true).isTrue(); // Test passes if no exception
+        // THEN: No exception is thrown (test reaches this point)
+        assertThat(zipResult).isNotNull();
     }
 
     @Test
@@ -346,7 +347,6 @@ class ZipUtilsTest {
 
         // Make the parent directory read-only to prevent file deletion
         File dirFile = subDir.toFile();
-        boolean originalWritable = dirFile.canWrite();
         dirFile.setWritable(false, false);
 
         try {
@@ -451,8 +451,7 @@ class ZipUtilsTest {
             }
         }
 
-        // THEN: All operations succeed without resource leaks
-        assertThat(true).isTrue();
+        // THEN: All operations succeed without resource leaks (loop completed without exceptions)
     }
 
     @Test
