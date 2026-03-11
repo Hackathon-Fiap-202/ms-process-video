@@ -1,164 +1,261 @@
-# Process Video Microservice
+# process-video
 
-A cloud-native microservice for automated video processing, built with clean architecture principles and AWS
-infrastructure.
+Microsserviço de processamento de vídeos do projeto **nexTime-frame**. Consome mensagens SQS geradas por eventos S3, baixa o vídeo original, extrai frames em paralelo, empacota em ZIP e publica o resultado em outra fila SQS para notificação ao usuário.
 
-## Overview
+## Sumário
 
-This microservice provides asynchronous video processing capabilities through event-driven architecture. It
-automatically extracts frames from uploaded videos, packages them efficiently, and manages the complete lifecycle
-through distributed messaging patterns.
+- [Visão Geral](#visão-geral)
+- [Arquitetura](#arquitetura)
+- [Fluxo de Processamento](#fluxo-de-processamento)
+- [Mensageria SQS](#mensageria-sqs)
+- [Armazenamento S3](#armazenamento-s3)
+- [Pré-requisitos](#pré-requisitos)
+- [Variáveis de Ambiente](#variáveis-de-ambiente)
+- [Desenvolvimento Local](#desenvolvimento-local)
+- [Build e Testes](#build-e-testes)
+- [Docker](#docker)
+- [CI/CD](#cicd)
+- [Contribuição](#contribuição)
 
-**Key Features:**
+---
 
-- **Event-Driven Architecture:** Asynchronous processing with message-based coordination
-- **Cloud-Native Design:** Scalable, resilient infrastructure leveraging AWS services
-- **Clean Architecture:** Separation of concerns through hexagonal pattern
-- **Developer Experience:** Local development environment with cloud service emulation
-- **Production Ready:** Automated deployment pipelines and infrastructure provisioning
+## Visão Geral
 
-## 📋 Table of Contents
+- **Linguagem / Framework**: Java 21 + Spring Boot 4.0.2
+- **Porta**: `8080`
+- **Arquitetura**: Hexagonal (Ports & Adapters)
+- **Trigger**: Consumidor SQS com modo de confirmação **MANUAL** (`acknowledgement-mode: MANUAL`)
+- **Observabilidade**: Datadog APM via `dd-java-agent.jar`
 
-- [Architecture](#architecture)
-- [Technologies](#technologies)
-- [Prerequisites](#prerequisites)
-- [Getting Started](#getting-started)
-- [Configuration](#configuration)
-- [Usage](#usage)
-- [Testing](#testing)
+---
 
-## 🏗️ Architecture
-
-The project implements **Hexagonal Architecture (Ports and Adapters)** to ensure separation of concerns, testability,
-and independence from external frameworks.
+## Arquitetura
 
 ```
-├── Application    → Use cases and orchestration logic
-├── Domain        → Core business rules and models
-└── Infrastructure → External system integrations
+infrastructure/
+  sqs/
+    listener/     ← VideoProcessCommandListener (consome video-process-command)
+    producer/     ← Publica em video-updated-event
+  s3/             ← S3Client (download do MP4, upload do ZIP)
+
+domain/
+  service/        ← VideoProcessorService (orquestra extração de frames)
+  model/          ← VideoProcessCommand, VideoUpdatedEvent
+  port/           ← interfaces de entrada e saída
 ```
 
-**Processing Flow:**
+Dependências fluem somente de fora para dentro: `infrastructure → domain/service → domain/model`.
 
-1. Upload triggers processing workflow
-2. Service orchestrates frame extraction pipeline
-3. Results are packaged and stored
-4. Lifecycle events are published for monitoring
-5. Cleanup operations complete the workflow
+---
 
-## 🛠️ Technologies
+## Fluxo de Processamento
 
-- **Java 21** - Modern JVM platform
-- **Spring Boot 3** - Application framework with cloud integrations
-- **Spring Cloud AWS** - Native cloud service bindings
-- **JCodec** - Media processing capabilities
-- **Docker & Docker Compose** - Container orchestration
-- **LocalStack** - Local cloud environment
-- **Terraform** - Infrastructure as Code
-- **GitHub Actions** - CI/CD automation
-- **SonarCloud** - Code quality analysis
-
-## 📦 Prerequisites
-
-- [Java 21](https://www.oracle.com/java/technologies/downloads/#java21)
-- [Maven 3.8+](https://maven.apache.org/download.cgi)
-- [Docker](https://www.docker.com/products/docker-desktop) and Docker Compose
-
-## 🚀 Getting Started
-
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/your-repo/process-video.git
-   cd process-video
-   ```
-
-2. **Build the project:**
-   ```bash
-   mvn clean install
-   ```
-
-3. **Run with Docker Compose:**
-   ```bash
-   docker-compose up -d
-   ```
-
-    - Application: `http://localhost:8080`
-    - Local Cloud Services: `http://localhost:4566`
-    - Health Check: `http://localhost:8080/actuator/health`
-
-## ⚙️ Configuration
-
-### Environment Variables
-
-Configure runtime behavior through environment variables:
-
-| Variable | Description | Default |
-| :--- | :--- | :--- |
-| `AWS_REGION` | Cloud region | `us-east-1` |
-| `APP_BUCKETS_VIDEO_INPUT_STORAGE` | Input storage location | `video-input-storage` |
-| `APP_BUCKETS_VIDEO_PROCESSED_STORAGE` | Output storage location | `video-processed-storage` |
-| `SQS_VIDEO_PROCESS_COMMAND_URL` | Command queue endpoint | (Local URL) |
-| `SQS_VIDEO_UPDATED_EVENT_URL` | Event queue endpoint | (Local URL) |
-
-### Cloud Parameter Store
-
-Production deployments require these parameters in AWS Systems Manager:
-
-| Parameter Name | Description |
-| :--- | :--- |
-| `/process-video/terraform/aws-account-id` | Cloud account identifier |
-| `/process-video/aws/access-key-id` | Service credentials |
-| `/process-video/aws/secret-access-key` | Service credentials |
-| `/process-video/sqs/video-process-command-queue-name` | Command queue identifier |
-| `/process-video/sqs/video-updated-event-queue-name` | Event queue identifier |
-
-### CI/CD Configuration
-
-Configure deployment automation through repository secrets:
-
-| Secret Name | Description |
-| :--- | :--- |
-| `AWS_ACCOUNT_ID` | Cloud account identifier |
-| `SONAR_TOKEN` | Code analysis credentials |
-| `GITHUB_TOKEN` | Automation token |
-
-## 📖 Usage
-
-The service processes requests through asynchronous messaging:
-
-1. **Submit a processing request** by uploading content to the input storage
-2. **Send a command message** with the resource identifier
-3. **The service orchestrates** the complete processing workflow
-4. **Monitor progress** through published lifecycle events
-5. **Retrieve results** from the output storage location
-
-Example command message structure:
-
-```json
-{
-  "videoKey": "resource-identifier",
-  "requestId": "correlation-id"
-}
+```
+S3 Event → SQS: video-process-command
+                      │
+                      ▼  (max-concurrent-messages: 1)
+        VideoProcessCommandListener
+                      │
+                      ▼
+        Download MP4 do S3
+        video-input-storage/start-process/{uuid}.mp4
+                      │
+                      ▼
+        Extração de frames (thread pool size: 4)
+        JCodec — frame a cada N milissegundos
+                      │
+                      ▼
+        Empacotamento em ZIP (em memória)
+                      │
+                      ▼
+        Upload ZIP para S3
+        video-processed-storage/end-process/{uuid}.zip
+                      │
+                      ▼
+        Publicação em SQS: video-updated-event
+        { "cognitoUserId": "...", "key": "{uuid}.zip", "status": "COMPLETED" }
+                      │
+                      ▼
+        ACK manual da mensagem (DeleteMessage)
 ```
 
-## 🧪 Testing
+Em caso de falha em qualquer etapa, o ACK **não** é enviado e a mensagem retorna à fila após o timeout de visibilidade.
 
-Execute the test suite:
+---
+
+## Mensageria SQS
+
+| Operação | Fila | Conteúdo |
+|---|---|---|
+| **Consome** | `video-process-command` | Evento S3 gerado automaticamente quando um arquivo é salvo em `video-input-storage/start-process/` |
+| **Publica** | `video-updated-event` | `{ cognitoUserId, key, status }` após conclusão do processamento |
+
+### Configuração do Listener SQS
+
+| Parâmetro | Valor | Descrição |
+|---|---|---|
+| `max-concurrent-messages` | `1` | Processa um vídeo por vez (intensivo em CPU/memória) |
+| `max-messages-per-poll` | `1` | Busca uma mensagem por polling |
+| `poll-timeout` | `10` s | Timeout do long polling |
+| `acknowledgement-mode` | `MANUAL` | ACK explícito após processamento completo |
+
+---
+
+## Armazenamento S3
+
+| Path | Uso |
+|---|---|
+| `video-input-storage/start-process/{uuid}.mp4` | Vídeo original baixado para processamento |
+| `video-processed-storage/end-process/{uuid}.zip` | ZIP com todos os frames extraídos |
+
+---
+
+## Pré-requisitos
+
+- Java 21
+- Maven 3.8+
+- Docker e Docker Compose (para dependências locais)
+
+---
+
+## Variáveis de Ambiente
+
+| Variável | Descrição | Padrão (dev) |
+|---|---|---|
+| `SPRING_PROFILES_ACTIVE` | Profile ativo (`dev` ou `prod`) | `dev` |
+| `APP_BUCKETS_VIDEO_BUCKET_NAME` | Nome do bucket S3 | `nextime-frame-video-storage` |
+| `APP_BUCKETS_VIDEO_INPUT_PREFIX` | Prefixo S3 dos vídeos originais | `video-input-storage/` |
+| `APP_BUCKETS_VIDEO_PROCESSED_PREFIX` | Prefixo S3 dos ZIPs processados | `video-processed-storage/` |
+| `SQS_VIDEO_PROCESS_COMMAND_URL` | URL da fila `video-process-command` | `http://localhost:4566/000000000000/video-process-command` |
+| `SQS_VIDEO_UPDATED_EVENT_URL` | URL da fila `video-updated-event` | `http://localhost:4566/000000000000/video-updated-event` |
+| `APP_FRAME_EXTRACTION_THREAD_POOL_SIZE` | Número de threads para extração de frames | `4` (dev) / `2` (prod) |
+| `APP_FRAME_EXTRACTION_QUEUE_CAPACITY` | Capacidade da fila interna do thread pool | `100` |
+
+> **Atenção**: o arquivo `application.yaml` define `spring.profiles.active: dev` em hard-code. Em produção, a variável de ambiente `SPRING_PROFILES_ACTIVE=prod` sobrescreve esse valor. Ao executar localmente sem essa variável, o profile `dev` será usado.
+
+---
+
+## Desenvolvimento Local
+
+O `docker-compose.yml` sobe o LocalStack (SQS + S3) e o próprio serviço:
 
 ```bash
-mvn test
+cd process-video
+
+# Copiar variáveis de ambiente
+cp .env.example .env
+# Editar .env com os valores desejados
+
+# Subir dependências + aplicação
+docker compose up -d
+
+# OU executar apenas dependências e rodar a aplicação via Maven
+docker compose up localstack -d
+mvn spring-boot:run -Dspring-boot.run.profiles=dev
 ```
 
-Generate coverage reports:
+A aplicação estará disponível em `http://localhost:8080`.
+
+Health check: `http://localhost:8080/actuator/health`
+
+LocalStack: `http://localhost:4566`
+
+---
+
+## Build e Testes
 
 ```bash
+cd process-video
+
+# Build completo + testes + checkstyle (equivalente ao CI)
 mvn clean verify
+
+# Apenas testes
+mvn clean test
+
+# Teste de uma classe específica
+mvn test -Dtest=VideoProcessorServiceTest
+
+# Teste de um método específico
+mvn test -Dtest=VideoProcessorServiceTest#shouldSuccessfullyProcessVideo
+
+# Teste de uma classe aninhada (nested)
+mvn test -Dtest="VideoProcessorServiceTest\$SuccessPathTests"
+
+# Build sem testes
+mvn clean package -DskipTests
+
+# Apenas checkstyle
+mvn checkstyle:check
 ```
 
-The project includes comprehensive testing at multiple levels:
+Cobertura mínima: **80%** de linhas no bundle (JaCoCo), verificada em `mvn verify`.
 
-- Unit tests for business logic
-- Integration tests with infrastructure
-- End-to-end workflow validation
+---
 
- 
+## Docker
+
+```bash
+cd process-video
+
+# Build da imagem local
+docker build -t process-video:local .
+
+# Executar (requer LocalStack rodando)
+docker run -p 8080:8080 \
+  -e SPRING_PROFILES_ACTIVE=dev \
+  -e SQS_VIDEO_PROCESS_COMMAND_URL=http://host.docker.internal:4566/000000000000/video-process-command \
+  -e SQS_VIDEO_UPDATED_EVENT_URL=http://host.docker.internal:4566/000000000000/video-updated-event \
+  process-video:local
+```
+
+O Dockerfile inclui o `dd-java-agent.jar` e configura o ENTRYPOINT com `-javaagent:/dd-java-agent.jar` para instrumentação Datadog APM.
+
+---
+
+## CI/CD
+
+O pipeline `.github/workflows/cd-main.yml` é acionado em push para `main`.
+
+| Etapa | Descrição |
+|---|---|
+| Testes + SonarCloud | `mvn clean verify` + análise SonarCloud (`Hackathon-Fiap-202_ms-process-video`) |
+| Build Docker | `docker build -t process-video:$GITHUB_SHA .` |
+| Push ECR | Tag e push para o repositório ECR do `infra-core` |
+| Deploy ECS | `aws ecs update-service --force-new-deployment` no serviço `nextime-frame-process-video-service` |
+
+**Secrets do GitHub necessários:**
+
+| Secret | Descrição |
+|---|---|
+| `AWS_ACCOUNT_ID` | ID da conta AWS |
+| `AWS_ROLE_ARN` | ARN da role com permissões de deploy |
+| `SONAR_TOKEN` | Token de autenticação do SonarCloud |
+
+---
+
+## Estrutura do Projeto
+
+```
+process-video/
+├── src/
+│   ├── main/
+│   │   ├── java/com/nextimefood/processvideo/
+│   │   │   ├── domain/              # Modelos, interfaces de porta e serviço de processamento
+│   │   │   └── infrastructure/      # Listeners SQS, produtores SQS, cliente S3
+│   │   └── resources/
+│   │       ├── application.yaml     # Configuração base (profile dev)
+│   │       └── application-prod.yml # Overrides para produção
+│   └── test/                        # Testes unitários (JUnit 5 + Mockito)
+├── Dockerfile
+├── docker-compose.yml               # LocalStack para dev local
+├── .env.example                     # Exemplo de variáveis de ambiente
+├── pom.xml
+└── README.md
+```
+
+---
+
+## Contribuição
+
+Este repositório faz parte do hackathon FIAP — nexTime-frame. Siga o padrão de commits convencional (`feat:`, `fix:`, `docs:`, `chore:`) e as convenções de código definidas no `checkstyle.xml` (Google Java Style estendido, 4 espaços, max 150 colunas). Note que este serviço também proíbe `catch (Exception e)` — trate exceções com tipos específicos de domínio.
