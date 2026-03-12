@@ -18,6 +18,9 @@ RUN curl -Lo /app/dd-java-agent.jar https://dtdg.co/latest-java-tracer
 # ----- RUNTIME PHASE -----
 FROM amazoncorretto:21-alpine
 
+# Install curl since it is needed by the ECS Task Definition health check
+RUN apk add --no-cache curl
+
 # Create non-root user for security
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 
