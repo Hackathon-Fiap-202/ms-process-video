@@ -38,7 +38,7 @@ public class SqsVideoStatusUpdateAdapter implements VideoStatusUpdatePort {
         try {
             loggerPort.debug("[SqsVideoStatusUpdateAdapter][notifyStatus] Building status event, videoKey={}, success={}", videoKey, success);
             final VideoStatusEventDTO eventDTO = buildEventDTO(videoKey, success, frameCount, archiveSize);
-            
+
             if (eventDTO == null) {
                 loggerPort.warn("[SqsVideoStatusUpdateAdapter][notifyStatus] Event DTO is null, skipping message, videoKey={}", videoKey);
                 return;
@@ -75,6 +75,42 @@ public class SqsVideoStatusUpdateAdapter implements VideoStatusUpdatePort {
                     "[SqsVideoStatusUpdateAdapter][notifyStatus] Error sending status to SQS, videoKey={}, error={}",
                     videoKey,
                     e.getMessage());
+        }
+    }
+
+    @Override
+    public void notifyProcessing(String videoKey) {
+        try {
+            loggerPort.debug("[SqsVideoStatusUpdateAdapter][notifyProcessing] Building processing event, videoKey={}", videoKey);
+
+            final VideoStatusEventDTO eventDTO = new VideoStatusEventDTO(
+                    videoKey,
+                    false,
+                    ProcessStatus.PROCESSING,
+                    0,
+                    0,
+                    Instant.now().toString()
+            );
+
+            final String messageBody = objectMapper.writeValueAsString(eventDTO);
+
+            final SendMessageRequest sendMessageRequest = SendMessageRequest.builder()
+                    .queueUrl(queueUrl)
+                    .messageBody(messageBody)
+                    .delaySeconds(0)
+                    .build();
+
+            final SendMessageResponse response = sqsClient.sendMessage(sendMessageRequest);
+
+            loggerPort.info("[SqsVideoStatusUpdateAdapter][notifyProcessing] Processing status published, videoKey={}, messageId={}",
+                    videoKey, response.messageId());
+
+        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+            loggerPort.error("[SqsVideoStatusUpdateAdapter][notifyProcessing] Error serializing event, videoKey={}, error={}",
+                    videoKey, e.getMessage());
+        } catch (software.amazon.awssdk.core.exception.SdkException e) {
+            loggerPort.error("[SqsVideoStatusUpdateAdapter][notifyProcessing] Error sending to SQS, videoKey={}, error={}",
+                    videoKey, e.getMessage());
         }
     }
 
