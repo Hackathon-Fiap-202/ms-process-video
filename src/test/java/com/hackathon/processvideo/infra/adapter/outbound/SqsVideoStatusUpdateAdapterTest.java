@@ -75,7 +75,7 @@ class SqsVideoStatusUpdateAdapterTest {
     void notifyStatus_Success_Failed() throws JsonProcessingException {
         // Arrange
         String videoKey = "video456.mp4";
-        when(objectMapper.writeValueAsString(any(VideoStatusEventDTO.class))).thenReturn("{}");
+        when(objectMapper.writeValueAsString(any(VideoStatusEventDTO.class))).thenReturn("{\"status\":\"FAILED\"}");
         when(sqsClient.sendMessage(any(SendMessageRequest.class)))
                 .thenReturn(SendMessageResponse.builder().messageId("id").build());
 
@@ -108,7 +108,7 @@ class SqsVideoStatusUpdateAdapterTest {
     @DisplayName("Should handle AWS SdkException and log error")
     void notifyStatus_HandlesSqsError() throws JsonProcessingException {
         // Arrange
-        when(objectMapper.writeValueAsString(any())).thenReturn("{}");
+        when(objectMapper.writeValueAsString(any())).thenReturn("{\"status\":\"PROCESSED\"}");
         when(sqsClient.sendMessage(any(SendMessageRequest.class))).thenThrow(SdkException.builder().message("AWS Error").build());
 
         // Act
