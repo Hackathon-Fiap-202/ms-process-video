@@ -38,7 +38,18 @@ public class SqsVideoStatusUpdateAdapter implements VideoStatusUpdatePort {
         try {
             loggerPort.debug("[SqsVideoStatusUpdateAdapter][notifyStatus] Building status event, videoKey={}, success={}", videoKey, success);
             final VideoStatusEventDTO eventDTO = buildEventDTO(videoKey, success, frameCount, archiveSize);
+            
+            if (eventDTO == null) {
+                loggerPort.warn("[SqsVideoStatusUpdateAdapter][notifyStatus] Event DTO is null, skipping message, videoKey={}", videoKey);
+                return;
+            }
+
             final String messageBody = objectMapper.writeValueAsString(eventDTO);
+
+            if (messageBody == null || messageBody.trim().isEmpty() || "{}".equals(messageBody.trim())) {
+                loggerPort.warn("[SqsVideoStatusUpdateAdapter][notifyStatus] Serialized payload is empty, skipping message, videoKey={}", videoKey);
+                return;
+            }
 
             loggerPort.debug("[SqsVideoStatusUpdateAdapter][notifyStatus] Sending message to SQS queue, queueUrl={}", queueUrl);
             final SendMessageRequest sendMessageRequest = SendMessageRequest.builder()
