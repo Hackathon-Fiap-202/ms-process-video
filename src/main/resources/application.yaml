@@ -9,7 +9,7 @@ spring:
         listener:
           max-concurrent-messages: 1  # Processa 1 por vez
           max-messages-per-poll: 1
-          poll-timeout: 10
+          poll-timeout: 40
           acknowledgement-mode: MANUAL
           queue-attributes-resolution-strategy: INHERIT
 
