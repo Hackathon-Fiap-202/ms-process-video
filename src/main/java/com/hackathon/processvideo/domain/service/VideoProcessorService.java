@@ -45,6 +45,9 @@ public class VideoProcessorService implements ProcessVideoUseCase {
         long finalArchiveSize = 0;
 
         try {
+
+            videoStatusUpdatePort.notifyProcessing(keyName);
+
             loggerPort.debug("[VideoProcessorService][execute] [Thread: {}] Starting execution, inputKey={}, inputBucket={}",
                     Thread.currentThread().getName(), keyName, bucketName);
 

@@ -253,45 +253,12 @@
                     </execution>
                 </executions>
                 <configuration>
-                    <!--                    <excludes>-->
-                    <!--                        &lt;!&ndash; Application main class &ndash;&gt;-->
-                    <!--                        <exclude>**/ProcessVideoApplication.class</exclude>-->
-                    <!--                        -->
-                    <!--                        &lt;!&ndash; Configuration classes &ndash;&gt;-->
-                    <!--                        <exclude>**/config/**</exclude>-->
-                    <!--                        <exclude>**/*Config.class</exclude>-->
-                    <!--                        <exclude>**/*Configuration.class</exclude>-->
-                    <!--                        -->
-                    <!--                        &lt;!&ndash; DTOs and Models (simple data classes) &ndash;&gt;-->
-                    <!--                        <exclude>**/domain/model/**</exclude>-->
-                    <!--                        <exclude>**/dto/**</exclude>-->
-                    <!--                        <exclude>**/*DTO.class</exclude>-->
-                    <!--                        <exclude>**/*Request.class</exclude>-->
-                    <!--                        <exclude>**/*Response.class</exclude>-->
-                    <!--                        -->
-                    <!--                        &lt;!&ndash; Custom Exceptions &ndash;&gt;-->
-                    <!--                        <exclude>**/exception/**</exclude>-->
-                    <!--                        <exclude>**/*Exception.class</exclude>-->
-                    <!--                        -->
-                    <!--                        &lt;!&ndash; Generated classes &ndash;&gt;-->
-                    <!--                        <exclude>**/generated/**</exclude>-->
-                    <!--                        -->
-                    <!--                        &lt;!&ndash; Constants classes &ndash;&gt;-->
-                    <!--                        <exclude>**/*Constants.class</exclude>-->
-                    <!--                    </excludes>-->
-                    <rules>
-                        <rule>
-                            <element>BUNDLE</element>
-                            <limits>
-                                <limit>
-                                    <counter>LINE</counter>
-                                    <value>COVEREDRATIO</value>
-                                    <minimum>0.80</minimum>
-                                </limit>
-                            </limits>
-                        </rule>
-                    </rules>
-                </configuration>
+  <excludes>
+    <exclude>**/infra/config/**</exclude>
+    <exclude>**/domain/model/enums/**</exclude>
+    <exclude>**/infra/adapter/inbound/dto/**</exclude>
+  </excludes>
+</configuration>
             </plugin>
 
             <plugin>

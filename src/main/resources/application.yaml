@@ -7,11 +7,7 @@ spring:
     aws:
       sqs:
         listener:
-          max-concurrent-messages: 1  # Processa 1 por vez
-          max-messages-per-poll: 1
-          poll-timeout: 10
-          acknowledgement-mode: MANUAL
-          queue-attributes-resolution-strategy: INHERIT
+          poll-timeout: 40
 
 app:
   s3:
