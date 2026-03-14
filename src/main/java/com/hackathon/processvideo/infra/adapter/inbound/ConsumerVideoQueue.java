@@ -1,18 +1,22 @@
 package com.hackathon.processvideo.infra.adapter.inbound;
 
-import com.hackathon.processvideo.domain.port.in.ProcessVideoUseCase;
-import com.hackathon.processvideo.domain.port.out.LoggerPort;
-import com.hackathon.processvideo.utils.JsonConverter;
-import io.awspring.cloud.sqs.annotation.SqsListener;
 import java.net.UnknownHostException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
-import lombok.AllArgsConstructor;
+
 import org.springframework.stereotype.Component;
+
+import com.hackathon.processvideo.domain.port.in.ProcessVideoUseCase;
+import com.hackathon.processvideo.domain.port.out.LoggerPort;
+import com.hackathon.processvideo.utils.JsonConverter;
+
+import io.awspring.cloud.sqs.annotation.SqsListener;
+import lombok.AllArgsConstructor;
 
 @Component
 @AllArgsConstructor
 public class ConsumerVideoQueue {
+
     private static final long EVENT_CACHE_TTL_MS = 300_000; // 5 minutes
     private static final long CLEANUP_INTERVAL_MS = 60_000; // 1 minute
     private static final String LOG_PREFIX_CONSUME = "[ConsumerVideoQueue][consumeMessage]";
@@ -35,14 +39,14 @@ public class ConsumerVideoQueue {
     }
 
     @SqsListener(
-            value = "${app.queues.video-process-command}",
-            maxConcurrentMessages = "3"
+            value = "${app.queues.video-process-command}"
+            
     )
     public void consumeMessage(String payload) {
         try {
             loggerPort.debug(LOG_PREFIX_CONSUME
-                            + LOG_PREFIX_FORMAT
-                            + "Received message from SQS queue, payload={}",
+                    + LOG_PREFIX_FORMAT
+                    + "Received message from SQS queue, payload={}",
                     LOG_PREFIX_CONSUME,
                     REPLICA_ID,
                     Thread.currentThread().getName(),
@@ -73,7 +77,7 @@ public class ConsumerVideoQueue {
 
         if (notification.getRecords() == null || notification.getRecords().isEmpty()) {
             loggerPort.warn(LOG_PREFIX_PROCESS + LOG_PREFIX_FORMAT
-                            + "No records found in S3 event notification",
+                    + "No records found in S3 event notification",
                     LOG_PREFIX_PROCESS, REPLICA_ID, Thread.currentThread().getName());
             return;
         }
@@ -98,13 +102,12 @@ public class ConsumerVideoQueue {
             return;
         }
 
-        if (isEventAlreadyProcessed(keyName)) {
+        if (!tryMarkAndProcess(keyName)) {
             loggerPort.warn(LOG_PREFIX_PROCESS + LOG_PREFIX_FORMAT
-                            + "Event already processed, skipping duplicate, key={}",
+                    + "Event already processed, skipping duplicate, key={}",
                     LOG_PREFIX_PROCESS, REPLICA_ID, Thread.currentThread().getName(), keyName);
             return;
         }
-
         loggerPort.info(LOG_PREFIX_PROCESS + LOG_PREFIX_FORMAT + "Starting video processing, bucket={}, key={}",
                 LOG_PREFIX_PROCESS, REPLICA_ID, Thread.currentThread().getName(), bucketName, keyName);
 
@@ -124,11 +127,10 @@ public class ConsumerVideoQueue {
         return isValid;
     }
 
-    private boolean isEventAlreadyProcessed(String eventKey) {
-        // Clean up old entries periodically
+    private boolean tryMarkAndProcess(String eventKey) {
         cleanupOldEntries();
-
-        return processedEvents.containsKey(eventKey);
+        Long existing = processedEvents.putIfAbsent(eventKey, System.currentTimeMillis());
+        return existing == null; 
     }
 
     private void markEventAsProcessed(String eventKey) {
@@ -147,8 +149,8 @@ public class ConsumerVideoQueue {
 
         lastCleanupTime.set(currentTime);
 
-        processedEvents.entrySet().removeIf(entry ->
-                currentTime - entry.getValue() > EVENT_CACHE_TTL_MS
+        processedEvents.entrySet().removeIf(entry
+                -> currentTime - entry.getValue() > EVENT_CACHE_TTL_MS
         );
 
         loggerPort.debug("[ConsumerVideoQueue][cleanupOldEntries] Cleaned up old entries, remainingCacheSize={}",

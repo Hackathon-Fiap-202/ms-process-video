@@ -5,13 +5,6 @@ spring:
         static: us-east-1
       s3:
         path-style-access-enabled: false
-      sqs:
-        listener:
-          max-concurrent-messages: 1
-          max-messages-per-poll: 1
-          poll-timeout: 10
-          acknowledgement-mode: MANUAL
-          queue-attributes-resolution-strategy: INHERIT
 
 app:
   sqs:
